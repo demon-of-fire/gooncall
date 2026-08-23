@@ -470,63 +470,94 @@ ipcMain.handle('clip:write', (_e, text) => {
 /* ---- real update check via GitHub releases (electron-updater) ---- */
 const UPDATE_REPO = { owner: 'demon-of-fire', repo: 'gooncall' };
 let updater = null;
+let updaterBusy = false;
+
+const friendlyUpdateError = (e) => {
+  const msg = String((e && e.message) || e);
+  if (/ENOTFOUND|EAI_AGAIN|net::|ETIMEDOUT/i.test(msg)) return "Couldn't reach GitHub — check your internet.";
+  if (/404|no published|release/i.test(msg)) return 'No published releases found.';
+  return msg;
+};
+
 try {
   const { autoUpdater } = require('electron-updater');
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
   updater = autoUpdater;
+  updater.autoDownload = true;
+  updater.autoInstallOnAppQuit = true;
+  updater.setFeedURL({ provider: 'github', owner: UPDATE_REPO.owner, repo: UPDATE_REPO.repo });
 } catch (e) {
   console.log('electron-updater not available, update checks disabled');
 }
 
-let updaterBusy = false;
-ipcMain.handle('updater:check', () => new Promise((resolve) => {
-  if (!updater) return resolve({ status: 'disabled', message: 'Updater unavailable in this build.' });
-  if (updaterBusy) return resolve({ status: 'busy', message: 'Already checking…' });
-  updaterBusy = true;
-  let settled = false;
-  const done = (r) => { if (!settled) { settled = true; updaterBusy = false; resolve(r); } };
-  const timer = setTimeout(() => done({ status: 'error', message: 'Check timed out.' }), 30000);
-
-  updater.once('checking-for-update', () => {});
-  updater.once('update-available', (info) => {
-    clearTimeout(timer);
-    done({ status: 'available', message: 'Downloading v' + info.version + ' — installs when you quit, or click again to install now.', version: info.version });
-  });
-  updater.once('update-not-available', (info) => {
-    clearTimeout(timer);
-    done({ status: 'latest', message: 'You are on the latest version (v' + (info.version || app.getVersion()) + ').' });
-  });
-  updater.once('update-downloaded', (info) => {
-    clearTimeout(timer);
-    done({ status: 'downloaded', message: 'v' + info.version + ' downloaded. Click "Install now" to apply and restart.', version: info.version });
-  });
-  updater.once('error', (err) => {
-    clearTimeout(timer);
-    const msg = String(err && err.message || err);
-    done({
-      status: 'error',
-      message: msg.includes('ENOTFOUND') || msg.includes('net::')
-        ? "Couldn't reach GitHub — check your internet."
-        : msg.includes('404') || msg.toLowerCase().includes('release')
-          ? 'No published releases found yet.'
-          : msg
-    });
-  });
-
-  try {
-    updater.setFeedURL({ provider: 'github', owner: UPDATE_REPO.owner, repo: UPDATE_REPO.repo });
-    updater.checkForUpdates();
-  } catch (err) {
-    clearTimeout(timer);
-    done({ status: 'error', message: String(err) });
+function pushUpdateToWindow(extra = {}) {
+  if (win && !win.isDestroyed()) {
+    try { win.webContents.send('update-status', extra); } catch {}
   }
-}));
+}
+
+ipcMain.handle('updater:check', () => {
+  if (!updater) return Promise.resolve({ status: 'disabled', message: 'Updater unavailable in this build.' });
+  if (updaterBusy) return Promise.resolve({ status: 'busy', message: 'Already checking — hang on…' });
+  updaterBusy = true;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      updaterBusy = false;
+      logLine('[updater] ' + JSON.stringify(r));
+      resolve(r);
+    };
+    const timer = setTimeout(() => finish({ status: 'error', message: 'Check timed out — is your internet up?' }), 45000);
+
+    const onAvail = (i) => finish({ status: 'available', message: 'v' + i.version + ' found — downloading in background. Installs when you quit, or hit Install now.', version: i.version });
+    const onNot = (i) => finish({ status: 'latest', message: 'You are on the latest version (v' + (i.version || app.getVersion()) + ').' });
+    const onDl = (i) => finish({ status: 'downloaded', message: 'v' + i.version + ' downloaded. Click "Install now" to apply.', version: i.version });
+    const onErr = (e) => finish({ status: 'error', message: friendlyUpdateError(e) });
+
+    const cleanup = () => {
+      updater.removeListener('update-available', onAvail);
+      updater.removeListener('update-not-available', onNot);
+      updater.removeListener('update-downloaded', onDl);
+      updater.removeListener('error', onErr);
+    };
+    updater.on('update-available', onAvail);
+    updater.on('update-not-available', onNot);
+    updater.on('update-downloaded', onDl);
+    updater.on('error', onErr);
+
+    updater.checkForUpdates().catch((err) => { cleanup(); finish({ status: 'error', message: friendlyUpdateError(err) }); });
+  });
+});
 
 ipcMain.handle('updater:install', () => {
-  if (updater) { try { updater.quitAndInstall(); } catch {} }
+  if (updater) {
+    forceQuit = true;
+    try { updater.quitAndInstall(); } catch {}
+  }
   return true;
 });
+
+/* launch-time check: if an update is out there, tell them right away */
+function startupUpdateCheck() {
+  if (!updater || process.env.SMOKE_TEST || process.env.SMOKE_PEER) return;
+  const onDl = (i) => {
+    logLine('[updater] launch-check downloaded v' + i.version);
+    pushUpdateToWindow({ kind: 'launch', status: 'downloaded', message: 'GoonCall v' + i.version + ' is ready.', version: i.version });
+  };
+  const onAvail = (i) => {
+    logLine('[updater] launch-check available v' + i.version);
+    pushUpdateToWindow({ kind: 'launch', status: 'available', message: 'Updating GoonCall to v' + i.version + ' in the background…', version: i.version });
+  };
+  updater.once('update-downloaded', onDl);
+  updater.once('update-available', onAvail);
+  setTimeout(() => {
+    updater.removeListener('update-downloaded', onDl);
+    updater.removeListener('update-available', onAvail);
+  }, 90000);
+}
 
 ipcMain.handle('data:get', (_e, name) => readData(name, null));
 ipcMain.handle('data:set', (_e, name, value) => writeData(name, value));
@@ -710,6 +741,7 @@ if (!gotLock) {
     createWindow();
     createTray();
     applyHotkey();
+    setTimeout(startupUpdateCheck, 6000);
   });
 
   app.on('before-quit', () => {

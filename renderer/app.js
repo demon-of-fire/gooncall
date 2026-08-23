@@ -43,6 +43,13 @@ const Sounds = {
   sent() { this.blip([660], .05, .03); },
   connect() { this.blip([440, 660], .12); },
   disconnect() { this.blip([520, 340], .13); },
+  mute() { this.blip([540, 370], .09, .06); },
+  unmute() { this.blip([370, 540], .09, .05); },
+  deafOn() { this.blip([240, 170], .11, .06); },
+  deafOff() { this.blip([170, 260], .1, .05); },
+  shareOn() { this.blip([660, 990], .08, .05); },
+  shareOff() { this.blip([520, 392], .1, .045); },
+  fxTick() { this.blip([760], .05, .04); },
   vol() { return Math.max(0, Math.min(1, ((typeof settings !== 'undefined' ? settings.ringVol : 70) || 70) / 100)); },
   ringToneFor(code) {
     const f = friendByCode(code);
@@ -1477,7 +1484,7 @@ function cycleFx() {
   const idx = FX_ORDER.indexOf(settings.fx || 'none');
   const next = FX_ORDER[(idx + 1) % FX_ORDER.length];
   setFx(next);
-  toast('Voice effect: ' + (FX_LABELS[next] || 'Clean'), next === 'none' ? '' : 'ok');
+  Sounds.fxTick();
 }
 let call = null;
 let remoteMicOn = true;
@@ -1875,6 +1882,7 @@ function renderRemoteTile() {
 function toggleDeafen() {
   if (!call) return;
   deafened = !deafened;
+  deafened ? Sounds.deafOn() : Sounds.deafOff();
   const ra = $('remote-audio');
   ra.muted = deafened;
   const btn = $('btn-deafen');
@@ -1901,6 +1909,7 @@ function toggleMute() {
   const track = call.micStream.getAudioTracks()[0];
   if (!track) return;
   track.enabled = !track.enabled;
+  track.enabled ? Sounds.unmute() : Sounds.mute();
   const muted = !track.enabled;
   const mute = $('btn-mute');
   mute.classList.toggle('off', muted);
@@ -1995,6 +2004,7 @@ async function startShare(sourceId, withAudio) {
   }
   sigSend({ t: 'ctrl', k: 'share-start' });
   sharingLocal = true;
+  Sounds.shareOn();
   $('share-video').srcObject = new MediaStream([vt]);
   applyStage();
 }
@@ -2006,7 +2016,7 @@ function stopShare(fromEnded = false) {
   call.shareStream.getTracks().forEach(t => t.stop());
   call.shareStream = null;
   sharingLocal = false;
-  if (!fromEnded) sigSend({ t: 'ctrl', k: 'share-stop' });
+  if (!fromEnded) { sigSend({ t: 'ctrl', k: 'share-stop' }); Sounds.shareOff(); }
   maybeClearShareVideo();
   applyStage();
 }
@@ -2675,6 +2685,7 @@ async function boot() {
   $('btn-fx').onclick = cycleFx;
   $('btn-board').onclick = () => Board.open();
   $('btn-stats').onclick = () => {};
+  $('btn-call-chat').onclick = () => { if (call) openChat(call.peerCode); };
   $('btn-share').onclick = () => {
     if (!call || !call.pc) return;
     sharingLocal ? stopShare() : openScreenPicker();
@@ -2823,6 +2834,21 @@ async function boot() {
   $('btn-open-sounds').onclick = () => window.aero.openSoundsFolder();
   $('btn-open-logs').onclick = () => window.aero.openLogsFolder();
   let updateReadyVersion = null;
+  const markUpdateReady = (version) => {
+    updateReadyVersion = version || true;
+    $('btn-updates').textContent = 'Install now';
+    $('btn-updates').classList.add('glow-btn');
+  };
+  window.aero.onUpdateStatus((s) => {
+    if (!s) return;
+    if (s.status === 'downloaded') {
+      toast(s.message + ' Click Settings → Install now, or just restart later.', 'ok', true);
+      window.aero.notify('GoonCall update ready', 'v' + s.version + ' downloaded — restart to apply');
+      markUpdateReady(s.version);
+    } else if (s.status === 'available' && s.kind === 'launch') {
+      toast(s.message, '');
+    }
+  });
   $('btn-updates').onclick = async () => {
     const btn = $('btn-updates');
     if (updateReadyVersion) {
