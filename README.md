@@ -113,12 +113,27 @@ Tray icon lives in the system tray — closing the window hides to tray by defau
 - **Portable mode**: drop an empty `portable.dat` next to the exe → all data stays beside it (USB-stick friendly).
 - Old AeroCall installs are migrated automatically on first run.
 
-## Building & testing
+## Building, releases & updates
 
 ```
 npm install
-npm run dist          # -> dist\gooncall setup.exe
+npm run dist          # local build -> dist\gooncall setup.exe
 ```
+
+**Shipping an update** (the easy way):
+
+```
+npm run release       # commits changes, bumps version, pushes tag
+```
+
+That triggers GitHub Actions, which builds the installer on Windows and publishes a
+GitHub Release (`vX.Y.Z` with `gooncall setup.exe` + `latest.yml`). Installed apps
+detect it via Settings → **Check updates** → download → *Install now*.
+
+> Note: the repo is currently **private**, so the in-app updater can't fetch from it —
+> GitHub requires public releases for token-free update checks. Flip the repo to
+> public (Settings → General → Danger Zone → Change visibility) and updates start
+> working immediately; nothing in the app needs to change.
 
 Automated end-to-end test (two instances calling each other for real — call, chat, file transfer, screen share):
 
