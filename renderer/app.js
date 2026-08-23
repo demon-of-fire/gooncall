@@ -291,8 +291,12 @@ function trackIncoming(conn) {
   const code = conn.peer;
   if (dismissedCodes.includes(code)) { try { conn.close(); } catch {} return; }
   const prev = conns.get(code);
-  if (prev && prev.open && prev !== conn) {
-    if (identity.code > code) { try { conn.close(); } catch {} return; }
+  if (prev && prev !== conn) {
+    // deterministic tie-break: lexicographic winner keeps its own connection.
+    // The loser is retired SILENTLY — its close must not look like a disconnect.
+    const keepNew = identity.code < code;
+    if (!keepNew) { try { conn.close(); } catch {} return; }
+    prev.__suppressed = true;
     try { prev.close(); } catch {}
   }
   conns.set(code, conn);
@@ -309,11 +313,17 @@ function wireConn(conn) {
   flushOutbox(code);
   conn.on('data', (m) => onData(conn, m));
   conn.on('close', () => {
+    if (conn.__suppressed) {
+      // retired deliberately during duplicate tie-break — not a real disconnect
+      if (conns.get(code) === conn) conns.delete(code);
+      return;
+    }
     if (conns.get(code) === conn) conns.delete(code);
-    presence.set(code, false);
+    const stillOpen = conns.has(code) && conns.get(code).open;
+    presence.set(code, stillOpen);
     renderFriends(); renderConnState();
     if (chatOpen === code) renderChatStatus();
-    if (call && call.peerCode === code && call.state !== 'idle') {
+    if (!stillOpen && call && call.peerCode === code && call.state !== 'idle') {
       toast((displayName(code)) + ' disconnected', 'err');
       teardownCall({ back: false, result: 'failed' });
       showView('view-home');
@@ -519,7 +529,15 @@ async function onData(conn, raw) {
       break;
     }
 
-    case 'sdp': if (call && call.peerCode === code) handleSdp(m.sdp); break;
+    case 'sdp': {
+      if (call && call.peerCode === code) {
+        const d = (m.type && typeof m.sdp === 'string')
+          ? { type: m.type, sdp: m.sdp }
+          : m.sdp;
+        handleSdp(d);
+      }
+      break;
+    }
     case 'ice': if (call && call.peerCode === code) handleIce(m.c); break;
 
     case 'ctrl': {
@@ -1211,91 +1229,88 @@ async function toggleVoiceRec() {
   toast('Recording… click the mic again to send', '');
 }
 
-/* ============ live stats ============ */
-let statsIv = null;
-let statsVis = false;
-let prevStats = null;
+/* ============ connection quality pill (numbers-free on purpose) ============ */
+let qualIv = null;
 
-function startStats() {
-  stopStats(true);
-  prevStats = null;
-  statsIv = setInterval(async () => {
-    if (!call || !call.pc) return stopStats();
+function startQuality() {
+  stopQuality();
+  qualIv = setInterval(async () => {
+    if (!call || !call.pc) return stopQuality();
     try {
       const rep = await call.pc.getStats();
-      let up = 0, down = 0, lost = 0, jitter = 0, jn = 0, rtt = null;
+      let rtt = null;
       rep.forEach(r => {
-        if (r.type === 'outbound-rtp' && r.bytesSent) up += r.bytesSent;
-        if (r.type === 'inbound-rtp') { down += r.bytesReceived || 0; lost += r.packetsLost || 0; if (r.jitter) { jitter += r.jitter; jn++; } }
         if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null) rtt = r.currentRoundTripTime;
       });
-      const p = prevStats || {};
-      const dt = (p.ts ? (Date.now() - p.ts) / 1000 : 2) || 2;
-      const upK = Math.max(0, (up - (p.up || up)) * 8 / dt / 1000);
-      const dnK = Math.max(0, (down - (p.down || down)) * 8 / dt / 1000);
-      prevStats = { ts: Date.now(), up, down };
       const ms = rtt != null ? Math.round(rtt * 1000) : null;
       const pill = $('btn-stats');
       pill.textContent = ms == null ? '\u2014' : ms < 80 ? 'HD' : ms < 200 ? 'OK' : 'LAG';
       pill.className = 'quality-pill' + (ms == null ? '' : ms < 80 ? ' good' : ms < 200 ? ' mid' : ' bad');
-      $('stats-overlay').innerHTML =
-        '<div><b>Up</b> ' + upK.toFixed(0) + ' kbps</div>' +
-        '<div><b>Down</b> ' + dnK.toFixed(0) + ' kbps</div>' +
-        '<div><b>RTT</b> ' + (ms == null ? '\u2026' : ms + ' ms') + '</div>' +
-        '<div><b>Lost</b> ' + lost + ' pkts</div>' +
-        '<div><b>Jitter</b> ' + (jn ? (jitter / jn * 1000).toFixed(0) : 0) + ' ms</div>' +
-        '<div><b>Voice FX</b> ' + (FX_LABELS[settings.fx] || 'Clean') + (Number(settings.gate) > 0 ? ' + gate' : '') + '</div>';
     } catch {}
-  }, 2000);
+  }, 3000);
 }
 
-function stopStats(keepHiddenState) {
-  if (statsIv) { clearInterval(statsIv); statsIv = null; }
-  prevStats = null;
-  statsVis = false;
+function stopQuality() {
+  if (qualIv) { clearInterval(qualIv); qualIv = null; }
   const pill = $('btn-stats');
   if (pill) { pill.textContent = '\u2014'; pill.className = 'quality-pill'; }
-  const ov = $('stats-overlay');
-  if (ov) ov.classList.add('hidden');
 }
 let mix = null;
 let gateRAF = 0;
 
 function buildFx(ctx, name) {
-  const nodes = [];
   const input = ctx.createGain();
-  let output = input;
+  const nodes = [input];
+  let tail;
   if (name === 'robot') {
     const ring = ctx.createGain(); ring.gain.value = 0;
     const osc = ctx.createOscillator(); osc.frequency.value = 50; osc.start();
     osc.connect(ring.gain);
-    input.connect(ring); output = ring;
-    nodes.push(ring, osc);
+    input.connect(ring); tail = ring; nodes.push(ring, osc);
   } else if (name === 'phone') {
     const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 350;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
-    input.connect(hp); hp.connect(lp); output = lp;
-    nodes.push(hp, lp);
+    input.connect(hp); hp.connect(lp); tail = lp; nodes.push(hp, lp);
   } else if (name === 'cave') {
-    const dry = ctx.createGain(); dry.gain.value = .72;
-    const dl = ctx.createDelay(1); dl.delayTime.value = .21;
-    const fb = ctx.createGain(); fb.gain.value = .38;
-    const wet = ctx.createGain(); wet.gain.value = .5;
-    input.connect(dry); dry.connect(output);
-    input.connect(dl); dl.connect(wet); wet.connect(output);
-    dl.connect(fb); fb.connect(dl); output = wet;
-    nodes.push(dry, dl, fb, wet);
+    const dry = ctx.createGain(); dry.gain.value = 0.7;
+    const dl = ctx.createDelay(1); dl.delayTime.value = 0.22;
+    const fb = ctx.createGain(); fb.gain.value = 0.38;
+    const wet = ctx.createGain(); wet.gain.value = 0.55;
+    tail = ctx.createGain();
+    input.connect(dry); dry.connect(tail);
+    input.connect(dl); dl.connect(fb); fb.connect(dl);
+    dl.connect(wet); wet.connect(tail);
+    nodes.push(dry, dl, fb, wet, tail);
   } else if (name === 'deep') {
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = .7;
-    const boost = ctx.createGain(); boost.gain.value = 1.5;
-    input.connect(lp); lp.connect(boost); output = boost;
-    nodes.push(lp, boost);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 0.7;
+    const boost = ctx.createGain(); boost.gain.value = 1.6;
+    input.connect(lp); lp.connect(boost); tail = boost; nodes.push(lp, boost);
   } else {
     const g = ctx.createGain();
-    input.connect(g); output = g;
-    nodes.push(g);
+    input.connect(g); tail = g; nodes.push(g);
   }
-  return { input, output, nodes };
+  return { input, output: tail, nodes };
+}
+
+function startGateLoop(tapNode) {
+  if (gateRAF) cancelAnimationFrame(gateRAF);
+  if (!mix) return;
+  const ctx = mix.ctx;
+  const an = ctx.createAnalyser(); an.fftSize = 1024;
+  tapNode.connect(an);
+  const buf = new Uint8Array(an.fftSize);
+  const loop = () => {
+    an.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / buf.length);
+    const g = Number(settings.gate) || 0;
+    const thresh = g <= 0 ? 0 : 0.002 + (g / 100) * 0.05;
+    const target = (!g || rms >= thresh) ? 1 : 0;
+    mix.gateGain.gain.setTargetAtTime(target, ctx.currentTime, 0.02);
+    gateRAF = requestAnimationFrame(loop);
+  };
+  loop();
 }
 
 function initMixBus(micStream) {
@@ -1312,28 +1327,14 @@ function initMixBus(micStream) {
     fx.output.connect(gateGain);
     gateGain.connect(micGain);
     micGain.connect(dest);
-
-    const an = ctx.createAnalyser(); an.fftSize = 1024;
-    fx.output.connect(an);
-    const buf = new Uint8Array(an.fftSize);
-
-    const gateLoop = () => {
-      an.getByteTimeDomainData(buf);
-      let sum = 0;
-      for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-      const rms = Math.sqrt(sum / buf.length);
-      const g = Number(settings.gate) || 0;
-      const thresh = g <= 0 ? 0 : 0.002 + (g / 100) * 0.05;
-      const target = (!g || rms >= thresh) ? 1 : 0;
-      gateGain.gain.setTargetAtTime(target, ctx.currentTime, 0.02);
-      gateRAF = requestAnimationFrame(gateLoop);
-    };
-    gateLoop();
-
     mix = {
       ctx, src, fx, gateGain, micGain, dest,
       boardGain: (() => { const b = ctx.createGain(); b.gain.value = 1; b.connect(dest); return b; })()
     };
+    startGateLoop(fx.output);
+
+    // push a little more quality into the uplink
+    for (const t of micStream.getAudioTracks()) { try { t.contentHint = 'speech'; } catch {} }
     return true;
   } catch {
     mix = null;
@@ -1360,15 +1361,14 @@ function setFx(name) {
   $('fx-label').textContent = FX_LABELS[name] || 'Clean';
   $('btn-fx').classList.toggle('active', name !== 'none');
   if (mix) {
-    try { mix.fx.output.disconnect(); mix.gateGain.disconnect(); } catch {}
-    for (const n of (mix.fx.nodes || [])) { try { n.disconnect && n.disconnect(); } catch {} }
     try { mix.src.disconnect(); } catch {}
+    for (const n of (mix.fx.nodes || [])) { try { n.disconnect && n.disconnect(); } catch {} }
     const fx = buildFx(mix.ctx, name);
     mix.fx = fx;
     mix.src.connect(fx.input);
-    fx.output.connect(mix.gateGain);
-    // re-tap analyser is inside old closure; rebuild gate loop
+    fx.output.connect(mix.gateGain);   // gateGain -> micGain edge stays intact
     startGateLoop(fx.output);
+    toast('Voice effect: ' + (FX_LABELS[name] || 'Clean'), name === 'none' ? '' : 'ok');
   }
 }
 
@@ -1649,16 +1649,41 @@ function onCallAccepted() {
   attachMic();
 }
 
+/* raise Opus from the ~24kbps default to 66kbps + forward error correction */
+function enhanceOpusSdp(sdp) {
+  try {
+    if (!sdp || sdp.indexOf('opus/48000') === -1) return sdp;
+    const m = /a=rtpmap:(\d+) opus\/48000\/2/.exec(sdp);
+    if (!m) return sdp;
+    const pt = m[1];
+    const params = 'maxaveragebitrate=66000;useinbandfec=1;usedtx=0';
+    const fmtpRe = new RegExp('a=fmtp:' + pt + ' ([^\\r\\n]*)');
+    if (fmtpRe.test(sdp)) {
+      return sdp.replace(fmtpRe, (line, existing) =>
+        line + (existing ? ';' : '') + params);
+    }
+    return sdp.replace(
+      new RegExp('a=rtpmap:' + pt + ' opus/48000/2'),
+      'a=rtpmap:' + pt + ' opus/48000/2\r\na=fmtp:' + pt + ' ' + params
+    );
+  } catch { return sdp; }
+}
+
 function buildPC() {
   const pc = new RTCPeerConnection(RTC_CFG);
   call.pc = pc;
   call.pcConnected = false;
 
+  const sendLocalDesc = async () => {
+    const d = pc.localDescription;
+    sigSend({ t: 'sdp', type: d.type, sdp: enhanceOpusSdp(d.sdp) });
+  };
+
   pc.onnegotiationneeded = async () => {
     try {
       call.makingOffer = true;
       await pc.setLocalDescription();
-      sigSend({ t: 'sdp', sdp: pc.localDescription.toJSON ? pc.localDescription.toJSON() : pc.localDescription });
+      await sendLocalDesc();
     } catch {}
     finally { call.makingOffer = false; }
   };
@@ -1677,7 +1702,7 @@ function buildPC() {
         clearTimeout(call.answerTimeout);
         $('call-status').textContent = '';
         startTimer();
-        startStats();
+        startQuality();
         Sounds.connect();
       }
     } else if (st === 'failed') {
@@ -1730,7 +1755,8 @@ async function handleSdp(desc) {
     if (desc.type === 'offer') {
       attachMic();
       await pc.setLocalDescription();
-      sigSend({ t: 'sdp', sdp: pc.localDescription.toJSON ? pc.localDescription.toJSON() : pc.localDescription });
+      const d = pc.localDescription;
+      sigSend({ t: 'sdp', type: d.type, sdp: enhanceOpusSdp(d.sdp) });
     }
   } catch {}
 }
@@ -1798,7 +1824,7 @@ function teardownCall(opts = {}) {
   Sounds.stopRing();
   stopTimer();
   stopSpeakingWatch();
-  stopStats();
+  stopQuality();
   destroyMixBus();
   closeIncomingDialog();
   call = null;
@@ -2055,7 +2081,7 @@ function renderFriends() {
   if (!friends.length) {
     const empty = document.createElement('li');
     empty.className = 'friends-empty';
-    empty.innerHTML = 'No friends yet.<br>Click <b>+ Add friend</b> and paste their code.';
+    empty.innerHTML = 'No acquaintances yet.<br>Click <b>+ Add acquaintance</b> and paste their code.';
     list.appendChild(empty);
     return;
   }
@@ -2619,10 +2645,7 @@ async function boot() {
   $('btn-deafen').onclick = toggleDeafen;
   $('btn-fx').onclick = cycleFx;
   $('btn-board').onclick = () => Board.open();
-  $('btn-stats').onclick = () => {
-    statsVis = !statsVis;
-    $('stats-overlay').classList.toggle('hidden', !statsVis);
-  };
+  $('btn-stats').onclick = () => {};
   $('btn-share').onclick = () => {
     if (!call || !call.pc) return;
     sharingLocal ? stopShare() : openScreenPicker();

@@ -24,7 +24,7 @@
       </section>
 
       <div class="side-actions">
-        <button id="btn-add-friend" class="primary-btn">+ Add friend</button>
+        <button id="btn-add-friend" class="primary-btn">+ Add acquaintance</button>
         <button id="btn-settings" class="icon-btn" aria-label="Settings">&#x2699;</button>
       </div>
 
@@ -33,8 +33,8 @@
         <ul id="requests-list" role="list"></ul>
       </section>
 
-      <nav aria-label="Friends">
-        <h2 class="side-label">Friends</h2>
+      <nav aria-label="Acquaintances">
+        <h2 class="side-label">Acquaintances</h2>
         <ul id="friends-list" role="list"></ul>
       </nav>
 
@@ -45,7 +45,7 @@
       <section id="view-home" class="view active">
         <header><h1>Welcome to AeroCall</h1></header>
         <p class="sub">Voice calls &amp; screen sharing, straight to your friends. No codes to swap every call.</p>
-        <div class="center hint">Click <b>+ Add friend</b> and paste their code once &mdash; then call them any time with one click.</div>
+        <div class="center hint">Click <b>+ Add acquaintance</b> and paste their code once &mdash; then call them any time with one click.</div>
         <section id="recent-wrap" class="hidden" aria-label="Recent calls">
           <h2 class="side-label center-label">Recent calls</h2>
           <ul id="recent-list" role="list"></ul>
@@ -137,7 +137,7 @@
   </dialog>
 
   <dialog id="dlg-addfriend" aria-modal="true" aria-labelledby="af-title">
-    <h2 id="af-title">Add friend</h2>
+    <h2 id="af-title">Add acquaintance</h2>
     <label class="field"><span>Paste their 8&#8209;character code</span>
       <input id="af-code" class="upper-input" type="text" maxlength="8" autocomplete="off" spellcheck="false" aria-label="Friend's code" />
     </label>
@@ -246,8 +246,6 @@
       <button id="btn-board-close" class="primary-btn" type="button">Done</button>
     </div>
   </dialog>
-
-  <div id="stats-overlay" class="stats-overlay hidden" role="status"></div>
 
   <audio id="remote-audio" autoplay></audio>
   <div id="toasts" role="status" aria-live="polite"></div>

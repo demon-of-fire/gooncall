@@ -24,8 +24,8 @@ Windows installer: run **`gooncall setup.exe`**, pick a folder, done.
 
 ## The 60-second guide
 
-1. First launch gives you an **8-character code** (e.g. `K7P2XQ9M`) — that's your identity. Copy it with the clipboard button in the sidebar.
-2. Click **+ Add friend**, paste *their* code. You'll see them as `[pending]` until they add you back.
+1. First launch gives you an **8-character code** (e.g. K7P2XQ9M) — that's your identity. Copy it with the clipboard button in the sidebar. A starter soundboard pack (airhorn, drum, laser, explosion, coin, tada & more) is generated for you.
+2. Click **+ Add acquaintance**, paste *their* code. You'll see them as `[pending]` until they add you back.
 3. When you're both running, green dots light up. Type in the DM that opens, or hit the phone icon.
 4. Their side rings: **Accept / Decline**. Talk. Hang up whenever. That's it.
 
@@ -45,6 +45,8 @@ No codes per call. No links. No rooms. Friends are forever.
 | Voice effects | **FX** button cycles Clean → Robot → Telephone → Cave → Deep, live mid-call |
 | Soundboard | **Board** button; tiles play into the call. Keys **1–9, 0** fire clips while the board is open |
 | Screen share | **Share** button → pick screen/window (+ system audio). Stop anytime |
+| Voice quality | Opus tuned to 66 kbps with forward error correction + speech-optimized uplink — noticeably fuller than stock Discord-quality defaults |
+| Voice effects | Robot / Telephone / Cave / Deep, hot-swappable mid-call |
 | Share quality | Settings → Fluid 720p30 / Balanced 1080p15 / Crisp 1440p10 |
 | Connection quality | The pill in the call header shows HD / OK / LAG — click it for bitrate/RTT/jitter/loss |
 | Leave | Red **Leave** button. Either side leaving ends it for both |
@@ -54,6 +56,7 @@ If someone's already in a call, callers hear "busy". No answer after 45 s = miss
 
 ### Soundboard tips
 
+- Ships with a **bundled pack of 10 synthesized clips** (Airhorn, Drum hit, Snare, Laser, Explosion, Coin, Boop, Buzzer, Trombone, Tada) — generated locally, royalty-free forever.
 - Add clips via **+ Add sounds** (mp3/wav/ogg/m4a/flac/webm) or dump files into your sounds folder (Settings → Sounds folder).
 - Clips route through the call mix bus — your mic ducks automatically while a clip plays.
 - "Hear clips locally" toggles local monitoring so you can hear what you're blasting.
@@ -140,10 +143,7 @@ That triggers GitHub Actions, which builds the installer on Windows and publishe
 GitHub Release (`vX.Y.Z` with `gooncall setup.exe` + `latest.yml`). Installed apps
 detect it via Settings → **Check updates** → download → *Install now*.
 
-> Note: the repo is currently **private**, so the in-app updater can't fetch from it —
-> GitHub requires public releases for token-free update checks. Flip the repo to
-> public (Settings → General → Danger Zone → Change visibility) and updates start
-> working immediately; nothing in the app needs to change.
+> The repo is **public**, so the in-app updater is fully live: releases published here are detected by every installed copy.
 
 Automated end-to-end test (two instances calling each other for real — call, chat, file transfer, screen share):
 

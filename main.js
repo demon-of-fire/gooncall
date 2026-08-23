@@ -304,6 +304,147 @@ function createWindow() {
 ipcMain.handle('win:minimize', () => win.minimize());
 ipcMain.handle('win:maximize', () => (win.isMaximized() ? win.unmaximize() : win.maximize()));
 ipcMain.handle('win:close', () => win.close());
+/* ---- bundled soundboard pack: procedurally synthesized, generated once ---- */
+function synthSamples() {
+  const SR = 44100;
+  const saw = (p) => 2 * (p - Math.floor(p + 0.5));
+  const env = (t, dur, a = 0.01) => {
+    if (t < a) return t / a;
+    return Math.pow(1 - (t - a) / Math.max(0.001, dur - a), 1.6);
+  };
+  const defs = {
+    'airhorn.wav': () => {
+      const dur = 1.3; const buf = new Float32Array(SR * dur);
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        const vib = 1 + 0.006 * Math.sin(2 * Math.PI * 7 * t);
+        let s = saw(439 * vib * t) + saw(415 * vib * t) + saw(349 * vib * t);
+        buf[i] = 0.27 * s * env(t, dur, 0.02);
+      }
+      return buf;
+    },
+    'drum-hit.wav': () => {
+      const dur = 0.3; const buf = new Float32Array(SR * dur);
+      let ph = 0;
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        const f = 45 + 115 * Math.exp(-t * 30);
+        ph += f / SR;
+        buf[i] = (Math.sin(2 * Math.PI * ph) * 0.9 + (Math.random() * 2 - 1) * 0.12 * Math.exp(-t * 90)) * env(t, dur, 0.002);
+      }
+      return buf;
+    },
+    'snare.wav': () => {
+      const dur = 0.22; const buf = new Float32Array(SR * dur);
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        buf[i] = ((Math.random() * 2 - 1) * 0.75 + Math.sin(2 * Math.PI * 185 * t) * 0.3) * Math.exp(-t * 26);
+      }
+      return buf;
+    },
+    'laser.wav': () => {
+      const dur = 0.4; const buf = new Float32Array(SR * dur);
+      let ph = 0;
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        const f = 200 + 1700 * Math.exp(-t * 9);
+        ph += f / SR;
+        buf[i] = saw(ph) * 0.4 * env(t, dur, 0.005);
+      }
+      return buf;
+    },
+    'explosion.wav': () => {
+      const dur = 1.0; const buf = new Float32Array(SR * dur);
+      let last = 0;
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        last = (last + 0.03 * (Math.random() * 2 - 1)) / 1.03;
+        buf[i] = last * 4 * Math.exp(-t * 4.5);
+      }
+      return buf;
+    },
+    'coin.wav': () => {
+      const dur = 0.35; const buf = new Float32Array(SR * dur);
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        const f = t < 0.09 ? 988 : 1319;
+        buf[i] = Math.sign(Math.sin(2 * Math.PI * f * t)) * 0.16 * Math.exp(-((t % 0.09) === t ? t : t - 0.09) * 8);
+      }
+      return buf;
+    },
+    'boop.wav': () => {
+      const dur = 0.14; const buf = new Float32Array(SR * dur);
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        buf[i] = Math.sin(2 * Math.PI * 620 * t) * 0.5 * env(t, dur, 0.005);
+      }
+      return buf;
+    },
+    'buzzer.wav': () => {
+      const dur = 0.6; const buf = new Float32Array(SR * dur);
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        buf[i] = (Math.sign(Math.sin(2 * Math.PI * 110 * t)) * 0.5 + Math.sign(Math.sin(2 * Math.PI * 117 * t)) * 0.5) * 0.4 * env(t, dur, 0.01);
+      }
+      return buf;
+    },
+    'trombone.wav': () => {
+      const dur = 1.2; const buf = new Float32Array(SR * dur);
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        const seg = Math.min(2, Math.floor(t / 0.36));
+        const f = [233, 208, 185][seg];
+        const lt = t - seg * 0.36;
+        const vib = 1 + 0.02 * Math.sin(2 * Math.PI * 6 * lt);
+        buf[i] = saw(f * vib * t) * 0.3 * env(t, dur, 0.05);
+      }
+      return buf;
+    },
+    'tada.wav': () => {
+      const dur = 0.9; const buf = new Float32Array(SR * dur);
+      const notes = [[523, 0], [659, 0.11], [784, 0.22], [1047, 0.33]];
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR; let s = 0;
+        for (const [f, st] of notes) {
+          if (t >= st) s += Math.sin(2 * Math.PI * f * (t - st)) * Math.exp(-(t - st) * 3.5);
+        }
+        buf[i] = 0.3 * s;
+      }
+      return buf;
+    }
+  };
+  return { SR, defs };
+}
+
+function floatToWav(samples, sr) {
+  const n = samples.length;
+  const out = Buffer.alloc(44 + n * 2);
+  out.write('RIFF', 0); out.writeUInt32LE(36 + n * 2, 4); out.write('WAVE', 8);
+  out.write('fmt ', 12); out.writeUInt32LE(16, 16); out.writeUInt16LE(1, 20);
+  out.writeUInt16LE(1, 22); out.writeUInt32LE(sr, 24); out.writeUInt32LE(sr * 2, 28);
+  out.writeUInt16LE(2, 32); out.writeUInt16LE(16, 34);
+  out.write('data', 36); out.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) {
+    let v = Math.max(-1, Math.min(1, samples[i]));
+    out.writeInt16LE(Math.round(v * 32767), 44 + i * 2);
+  }
+  return out;
+}
+
+function ensureBundledSounds() {
+  try {
+    const dir = soundsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const existing = fs.readdirSync(dir).filter(f => f.endsWith('.wav'));
+    if (existing.length > 0) return;
+    const { SR, defs } = synthSamples();
+    for (const [name, gen] of Object.entries(defs)) {
+      fs.writeFileSync(path.join(dir, name), floatToWav(gen(), SR));
+    }
+    console.log('bundled soundboard pack generated (' + Object.keys(defs).length + ' clips)');
+  } catch (e) { console.log('bundled sounds skipped: ' + String(e)); }
+}
+
 ipcMain.handle('win:focus', () => showMainWindow());
 ipcMain.handle('win:flash', (_e, on) => { try { win.flashFrame(!!on); } catch {} return true; });
 
@@ -564,6 +705,7 @@ if (!gotLock) {
     session.defaultSession.setPermissionCheckHandler((_wc, permission) =>
       ['media', 'audioCapture'].includes(permission));
     loadPrefs();
+    ensureBundledSounds();
     applyAutostart();
     createWindow();
     createTray();
