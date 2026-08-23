@@ -15,5 +15,11 @@ npm version patch
 Write-Host "Pushing code + tags (this triggers the GitHub Actions build & release)..."
 git push origin main --follow-tags
 
+# keep the local installer in the project root fresh too
+Write-Host "Building local installer..."
+npx electron-builder --win nsis --publish never
+Copy-Item "dist\gooncall setup.exe" "gooncall setup.exe" -Force
+Write-Host "Root copy refreshed: gooncall setup.exe"
+
 Write-Host ""
-Write-Host "Done. Track the build: gh run watch or https://github.com/demon-of-fire/gooncall/actions"
+Write-Host "Done. Track CI: https://github.com/demon-of-fire/gooncall/actions"
