@@ -62,7 +62,7 @@ If someone's already in a call, callers hear "busy". No answer after 45 s = miss
 
 - Text, **`**bold**`**, `*italic*`, `` `code` ``, clickable links (open outside the app)
 - Emoji picker, reactions (hover a message), reply-to quoting (↩ or right-click)
-- Right-click any message → Reply / Copy text
+- Right-click any message → Reply / Copy text / **Delete** (deleting removes it from both sides, replaced by "message deleted")
 - In-chat search (🔍 icon) with match count
 - Unread badges persist across restarts; window title shows `(n)`; taskbar flashes on new messages
 - "New messages" divider marks where you left off; jump-to-latest arrow when scrolled up
@@ -98,13 +98,23 @@ The only way a message fails permanently is if it never leaves your outbox — a
 ## Settings walkthrough (`Ctrl+,`)
 
 - **Identity**: display name + status broadcast live to friends; your code never changes
-- **Audio**: mic/speaker pickers (mic switches hot-mid-call), echo/noise/AGC, noise gate slider, mic test with live meter, ring volume
+- **Audio**: mic/speaker pickers (mic switches hot-mid-call), echo/noise/AGC, noise gate slider, mic test with live meter, ring volume, ringtone preview (change the dropdown to hear it)
 - **Look**: 6 accent colors, AMOLED black mode
 - **Life**: quiet hours (mutes notifications + ringtones during the window), notification toggle
 - **System**: close-to-tray, global mute hotkey, start-with-Windows
 - **Maintenance**: received/sounds folders, error logs, version + update check
 
 Tray icon lives in the system tray — closing the window hides to tray by default (changeable). Quit from the tray menu actually quits.
+
+### Window controls
+
+The app is chromeless — there are no min/max/close buttons:
+
+- **Move** — drag the top bar
+- **Maximize/restore** — double-click the top bar
+- **Minimize / restore / hide / quit** — right-click the top bar
+- **Close** — Alt+F4 or right-click menu (goes to tray unless Quit)
+- Everything also lives in the **tray icon**: left-click to show, right-click for Open/Quit
 
 ## Data & privacy
 

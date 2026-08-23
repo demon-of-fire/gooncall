@@ -263,6 +263,9 @@ function ensureConn(code) {
     let conn;
     try { conn = peer.connect(code, { reliable: true }); }
     catch (e) { settle(e); return; }
+    // retire any half-dead predecessor so connections don't stack up
+    const prev = conns.get(code);
+    if (prev && prev !== conn && !prev.open) { try { prev.close(); } catch {} }
     conns.set(code, conn);
     conn.on('open', () => { wireConn(conn); settle(null, conn); });
     conn.on('error', (e) => settle(e || new Error('conn error')));
@@ -415,6 +418,14 @@ async function onData(conn, raw) {
 
     case 'react': {
       applyReaction(code, String(m.id || ''), String(m.emoji || '').slice(0, 8), false);
+      break;
+    }
+
+    case 'delete': {
+      if (applyDelete(code, String(m.id || ''))) {
+        saveChats();
+        if (chatOpen === code) renderChatLog(code);
+      }
       break;
     }
 
@@ -801,12 +812,14 @@ let unreadCutId = null;
 let searchQuery = '';
 let drafts = {};
 let draftSaveTm = null;
-const liveUrls = [];
-const regUrl = (blob) => { const u = URL.createObjectURL(blob); liveUrls.push(u); return u; };
+const urlCache = new Map();   // blob -> object URL, kept alive so audio/img elements survive re-renders
+const regUrl = (blob) => {
+  if (!urlCache.has(blob)) urlCache.set(blob, URL.createObjectURL(blob));
+  return urlCache.get(blob);
+};
 
 function renderChatLog(code, forceScroll) {
   const log = $('chat-log');
-  for (const u of liveUrls.splice(0)) { try { URL.revokeObjectURL(u); } catch {} }
   log.innerHTML = '';
   const items = chats[code] || [];
   const q = searchQuery.trim().toLowerCase();
@@ -872,6 +885,18 @@ function renderChatLog(code, forceScroll) {
 }
 
 function appendMsgContent(div, code, it, d, showMeta) {
+  if (it.deleted) {
+    const del = document.createElement('div');
+    del.className = 'deleted-msg';
+    del.textContent = 'message deleted';
+    div.appendChild(del);
+    if (it.me) {
+      const body = document.createElement('div');
+      body.insertAdjacentHTML('beforeend', tickHtml(it));
+      div.appendChild(body);
+    }
+    return;
+  }
   if (showMeta !== false) {
     if (it.replyTo && it.replyTo.text) {
       const q = document.createElement('div');
@@ -1066,6 +1091,30 @@ function applyReaction(code, id, emoji, mine) {
 function reactTo(code, id, emoji) {
   sendTo(code, { t: 'react', id, emoji });
   applyReaction(code, id, emoji, true);
+}
+
+function applyDelete(code, id) {
+  const entry = (chats[code] || []).find(c => c.id === id);
+  if (!entry || entry.deleted) return false;
+  entry.deleted = true;
+  delete entry.text;
+  delete entry.kind;
+  delete entry.dataUrl;
+  delete entry.diskPath;
+  delete entry.reactions;
+  delete entry.myReacts;
+  const b = blobStore.get(id);
+  if (b) { blobStore.delete(id); }
+  return true;
+}
+
+function deleteMessage(code, id) {
+  sendTo(code, { t: 'delete', id });
+  if (applyDelete(code, id)) {
+    saveChats();
+    if (chatOpen === code) renderChatLog(code);
+    toast('Message deleted');
+  }
 }
 
 async function sendChat(text) {
@@ -1620,6 +1669,7 @@ function buildPC() {
     if (!call || call.pc !== pc) return;
     const st = pc.connectionState;
     if (st === 'connected') {
+      call.state = 'active';
       if (call.graceTm) { clearTimeout(call.graceTm); call.graceTm = null; toast('Back online', 'ok'); }
       if (!call.pcConnected) {
         call.pcConnected = true;
@@ -1891,7 +1941,10 @@ function applyStage() {
   $('call-stage').classList.toggle('sharing', anyShare);
   $('btn-share').classList.toggle('on', sharingLocal);
   const label = $('share-label');
-  if (label) label.textContent = anyShare ? (sharingLocal ? 'You are sharing' : displayName(call.peerCode) + "'s screen") : '';
+  if (label) {
+    label.textContent = anyShare ? (sharingLocal ? 'You are sharing' : (call ? displayName(call.peerCode) + "'s screen" : '')) : '';
+    label.classList.toggle('hidden', !anyShare);
+  }
 }
 
 async function startShare(sourceId, withAudio) {
@@ -2451,6 +2504,9 @@ function openCtxMenu(x, y, entry) {
       toast(ok ? 'Copied' : 'Copy failed', ok ? 'ok' : 'err');
     });
   }
+  if (entry.me && !entry.deleted) {
+    add('Delete', () => deleteMessage(chatOpen, entry.id), 'danger');
+  }
   document.body.appendChild(m);
   const r = m.getBoundingClientRect();
   m.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
@@ -2517,9 +2573,10 @@ async function boot() {
   renderFriends();
   renderRecent();
 
-  $('tb-min').onclick = () => window.aero.minimize();
-  $('tb-max').onclick = () => window.aero.maximize();
-  $('tb-close').onclick = () => window.aero.close();
+  /* titlebar: drag is native; dblclick maximizes, right-click gives the window menu */
+  const tb = $('titlebar');
+  tb.addEventListener('dblclick', () => window.aero.maximize());
+  tb.addEventListener('contextmenu', (e) => { e.preventDefault(); window.aero.titleMenu(); });
 
   $('btn-copy-code').onclick = async () => {
     const ok = await window.aero.clipWrite(identity.code);
@@ -2692,6 +2749,16 @@ async function boot() {
   $('board-monitor').addEventListener('change', (e) => { settings.boardMonitor = e.target.checked; saveSettingsData(); });
 
   $('set-gate').addEventListener('input', updateGateLabel);
+  $('set-ring').addEventListener('change', (e) => {
+    const t = RINGTONES[e.target.value];
+    if (!t || !t.steps.length) return;
+    let i = 0;
+    const iv = setInterval(() => {
+      if (i >= t.steps.length) { clearInterval(iv); return; }
+      Sounds.blip(t.steps[i], t.dur, .09 * Sounds.vol());
+      i++;
+    }, 170);
+  });
   $('set-ringvol').addEventListener('input', (e) => { $('ringvol-val').textContent = e.target.value; });
   $('set-ringvol').addEventListener('change', (e) => { settings.ringVol = Number(e.target.value); Sounds.blip([660], .08, .06 * Sounds.vol()); });
   $('set-speaker').addEventListener('change', (e) => {

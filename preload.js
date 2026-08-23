@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('aero', {
   minimize: () => ipcRenderer.invoke('win:minimize'),
   maximize: () => ipcRenderer.invoke('win:maximize'),
   close: () => ipcRenderer.invoke('win:close'),
+  titleMenu: () => ipcRenderer.invoke('win:title-menu'),
   focus: () => ipcRenderer.invoke('win:focus'),
   flash: (on) => ipcRenderer.invoke('win:flash', on),
   getData: (name) => ipcRenderer.invoke('data:get', name),

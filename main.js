@@ -307,6 +307,19 @@ ipcMain.handle('win:close', () => win.close());
 ipcMain.handle('win:focus', () => showMainWindow());
 ipcMain.handle('win:flash', (_e, on) => { try { win.flashFrame(!!on); } catch {} return true; });
 
+ipcMain.handle('win:title-menu', () => {
+  if (!win || win.isDestroyed()) return false;
+  Menu.buildFromTemplate([
+    { label: 'Restore', visible: win.isMaximized(), click: () => win.unmaximize() },
+    { label: 'Maximize', visible: !win.isMaximized(), enabled: win.isMaximizable(), click: () => win.maximize() },
+    { label: 'Minimize', click: () => win.minimize() },
+    { type: 'separator' },
+    { label: 'Hide to tray', click: () => win.hide() },
+    { label: 'Quit GoonCall', click: () => { forceQuit = true; app.quit(); } }
+  ]).popup({ window: win });
+  return true;
+});
+
 /* native clipboard — immune to focus quirks that break navigator.clipboard */
 ipcMain.handle('clip:write', (_e, text) => {
   try { clipboard.writeText(String(text == null ? '' : text)); return true; }
