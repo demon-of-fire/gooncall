@@ -21,3 +21,10 @@ jobs:
         run: npx electron-builder --win nsis --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish release (un-draft)
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF -replace 'refs/tags/',''
+          gh release edit $tag --draft=false --title=$tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

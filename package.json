@@ -15,7 +15,6 @@
     "appId": "com.gooncall.app",
     "productName": "GoonCall",
     "artifactName": "gooncall setup.${ext}",
-    "releaseType": "release",
     "directories": {
       "output": "dist"
     },
