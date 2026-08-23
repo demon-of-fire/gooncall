@@ -121,26 +121,19 @@ The app is chromeless — there are no min/max/close buttons:
 
 ## Shortcuts
 
-**Anytime:**
+Every shortcut is **editable** — Settings → Shortcuts tab → click a binding → press the new combo (saved instantly, duplicates auto-clear, "Restore defaults" resets everything).
 
-| Keys | Action |
-|---|---|
-| Ctrl+, | Settings |
-| Ctrl+Enter | **Answer incoming call** (works even while typing) |
-| Esc | Decline incoming call / close dialogs |
+**Defaults — anytime:**
 
-**In call:**
+- Ctrl+, opens Settings
+- **Ctrl+Enter answers an incoming call** (works even while typing)
+- Esc declines incoming / closes dialogs
 
-| Keys | Action |
-|---|---|
-| M | Mute mic |
-| D | Deafen |
-| Ctrl+Shift+S | Start/stop screen share |
-| Ctrl+Shift+F | Cycle voice effect |
-| Ctrl+Shift+B | Soundboard |
-| Ctrl+Shift+C | Toggle chat panel |
-| Ctrl+Shift+H | Hang up |
-| 1–9, 0 | Play soundboard clips (board open) |
+**Defaults — in call:**
+
+- M mutes, D deafens
+- Ctrl+Shift+S screen share · F voice effect cycle · B soundboard · C chat panel · H hang up
+- 1–9 / 0 fire soundboard clips while the board is open
 
 **In chat:** Ctrl+F opens search.
 

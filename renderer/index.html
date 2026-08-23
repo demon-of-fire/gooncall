@@ -151,68 +151,99 @@
 
   <dialog id="dlg-settings" aria-modal="true" aria-labelledby="set-title">
     <h2 id="set-title">Settings</h2>
-    <div class="set-grid">
-      <label class="field span2"><span>Display name</span>
-        <input id="set-name" type="text" maxlength="32" aria-label="Your display name" />
-      </label>
-      <label class="field span2"><span>Status (friends see this)</span>
-        <input id="set-status" type="text" maxlength="80" placeholder="e.g. grinding ranked" aria-label="Your status" />
-      </label>
-      <label class="field"><span>Microphone</span>
-        <select id="set-mic"></select>
-      </label>
-      <label class="field"><span>Speaker</span>
-        <select id="set-speaker"></select>
-      </label>
-      <div class="set-checks span2 row-wrap">
-        <label><input type="checkbox" id="set-echo" /> Echo cancel</label>
-        <label><input type="checkbox" id="set-noise" /> Noise suppress</label>
-        <label><input type="checkbox" id="set-agc" /> Auto gain</label>
-        <label><input type="checkbox" id="set-notifs" /> Notifications</label>
-        <button id="btn-mic-test" class="ghost-btn small-btn" type="button">Test mic &#x1F50A;</button>
-      </div>
-      <div class="meter-wrap span2"><div id="mic-meter"><i></i></div></div>
-      <label class="field"><span>Ringtone</span>
-        <select id="set-ring"></select>
-      </label>
-      <label class="field"><span>Noise gate &mdash; <b id="gate-val">Off</b></span>
-        <input type="range" id="set-gate" min="0" max="100" step="5" aria-label="Noise gate" />
-      </label>
-      <label class="field"><span>Ringtone &amp; sounds &mdash; <b id="ringvol-val">70</b>%</span>
-        <input type="range" id="set-ringvol" min="0" max="100" step="5" aria-label="Ringtone volume" />
-      </label>
-      <label class="field"><span>Screen share quality</span>
-        <select id="set-sharepreset">
-          <option value="fluid">Fluid &mdash; 720p @ 30fps</option>
-          <option value="balanced">Balanced &mdash; 1080p @ 15fps</option>
-          <option value="crisp">Crisp &mdash; 1440p @ 10fps</option>
-        </select>
-      </label>
-      <div class="field span2"><span>Accent</span>
-        <div id="accent-row" role="radiogroup" aria-label="Accent color"></div>
-      </div>
-      <div class="set-checks span2 row-wrap">
-        <label><input type="checkbox" id="set-amoled" /> AMOLED black</label>
-        <label><input type="checkbox" id="set-qh" /> Quiet hours</label>
-        <input type="time" id="set-qh-start" value="23:00" aria-label="Quiet from" />
-        <span class="qh-dash">&rarr;</span>
-        <input type="time" id="set-qh-end" value="08:00" aria-label="Quiet until" />
-      </div>
+    <div class="tabs" id="set-tabs" role="tablist">
+      <button type="button" class="active" data-tab="general">General</button>
+      <button type="button" data-tab="audio">Audio</button>
+      <button type="button" data-tab="sharefx">Share &amp; FX</button>
+      <button type="button" data-tab="shortcuts">Shortcuts</button>
+      <button type="button" data-tab="app">App</button>
     </div>
-    <div class="set-divider"></div>
-    <div class="set-checks row-wrap">
-      <label><input type="checkbox" id="set-tray" /> Close hides to tray</label>
-      <label><input type="checkbox" id="set-hotkey" /> Global mute hotkey (Ctrl+Shift+M)</label>
-      <label><input type="checkbox" id="set-autostart" /> Start with Windows</label>
+    <div class="tab-pages">
+      <section class="tab-page active" data-page="general">
+        <label class="field"><span>Display name</span>
+          <input id="set-name" type="text" maxlength="32" aria-label="Your display name" />
+        </label>
+        <label class="field"><span>Status (friends see this)</span>
+          <input id="set-status" type="text" maxlength="80" placeholder="e.g. grinding ranked" aria-label="Your status" />
+        </label>
+        <div class="field"><span>Accent</span>
+          <div id="accent-row" role="radiogroup" aria-label="Accent color"></div>
+        </div>
+        <div class="set-checks row-wrap">
+          <label><input type="checkbox" id="set-amoled" /> AMOLED black</label>
+        </div>
+      </section>
+
+      <section class="tab-page" data-page="audio">
+        <label class="field"><span>Microphone</span>
+          <select id="set-mic"></select>
+        </label>
+        <label class="field"><span>Speaker</span>
+          <select id="set-speaker"></select>
+        </label>
+        <div class="set-checks row-wrap">
+          <label><input type="checkbox" id="set-echo" /> Echo cancel</label>
+          <label><input type="checkbox" id="set-noise" /> Noise suppress</label>
+          <label><input type="checkbox" id="set-agc" /> Auto gain</label>
+          <button id="btn-mic-test" class="ghost-btn small-btn" type="button">Test mic &#x1F50A;</button>
+        </div>
+        <div class="meter-wrap"><div id="mic-meter"><i></i></div></div>
+        <label class="field"><span>Noise gate &mdash; <b id="gate-val">Off</b></span>
+          <input type="range" id="set-gate" min="0" max="100" step="5" aria-label="Noise gate" />
+        </label>
+        <label class="field"><span>Ringtone</span>
+          <select id="set-ring"></select>
+        </label>
+        <label class="field"><span>Ringtone &amp; sounds &mdash; <b id="ringvol-val">70</b>%</span>
+          <input type="range" id="set-ringvol" min="0" max="100" step="5" aria-label="Ringtone volume" />
+        </label>
+      </section>
+
+      <section class="tab-page" data-page="sharefx">
+        <label class="field"><span>Default voice effect</span>
+          <select id="set-fx"></select>
+        </label>
+        <label class="field"><span>Screen share quality</span>
+          <select id="set-sharepreset">
+            <option value="fluid">Fluid &mdash; 720p @ 30fps</option>
+            <option value="balanced">Balanced &mdash; 1080p @ 15fps</option>
+            <option value="crisp">Crisp &mdash; 1440p @ 10fps</option>
+          </select>
+        </label>
+        <p class="set-hint">Effects are also swappable mid-call with their shortcut. Mic processing changes apply on your next call.</p>
+      </section>
+
+      <section class="tab-page" data-page="shortcuts">
+        <div id="sc-list"></div>
+        <div class="row-wrap sc-foot">
+          <p class="set-hint">Click a binding, press the new combo. Saved instantly. Esc cancels.</p>
+          <button id="btn-sc-reset" class="ghost-btn small-btn" type="button">Restore defaults</button>
+        </div>
+      </section>
+
+      <section class="tab-page" data-page="app">
+        <div class="set-checks row-wrap">
+          <label><input type="checkbox" id="set-notifs" /> Message notifications</label>
+          <label><input type="checkbox" id="set-qh" /> Quiet hours</label>
+          <input type="time" id="set-qh-start" value="23:00" aria-label="Quiet from" />
+          <span class="qh-dash">&rarr;</span>
+          <input type="time" id="set-qh-end" value="08:00" aria-label="Quiet until" />
+        </div>
+        <div class="set-divider"></div>
+        <div class="set-checks row-wrap">
+          <label><input type="checkbox" id="set-tray" /> Close hides to tray</label>
+          <label><input type="checkbox" id="set-hotkey" /> Global mute hotkey (Ctrl+Shift+M)</label>
+          <label><input type="checkbox" id="set-autostart" /> Start with Windows</label>
+        </div>
+        <div class="about-row">
+          <span id="app-version" class="ver">GoonCall</span>
+          <button id="btn-open-received" class="ghost-btn small-btn" type="button">Received files</button>
+          <button id="btn-open-sounds" class="ghost-btn small-btn" type="button">Sounds folder</button>
+          <button id="btn-open-logs" class="ghost-btn small-btn" type="button">Open logs</button>
+          <button id="btn-updates" class="ghost-btn small-btn" type="button">Check updates</button>
+        </div>
+      </section>
     </div>
-    <div class="about-row">
-      <span id="app-version" class="ver">AeroCall</span>
-      <button id="btn-open-received" class="ghost-btn small-btn" type="button">Received files</button>
-      <button id="btn-open-sounds" class="ghost-btn small-btn" type="button">Sounds folder</button>
-      <button id="btn-open-logs" class="ghost-btn small-btn" type="button">Open logs</button>
-      <button id="btn-updates" class="ghost-btn small-btn" type="button">Check updates</button>
-    </div>
-    <p class="set-hint">Mic processing applies on your next call. Friends see your name/status update instantly.</p>
     <div class="dialog-actions">
       <button id="btn-set-cancel" class="ghost-btn">Cancel</button>
       <button id="btn-set-save" class="primary-btn">Save</button>

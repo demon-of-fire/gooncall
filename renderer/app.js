@@ -2332,6 +2332,14 @@ function openSettings() {
   $('set-gate').value = settings.gate;
   updateGateLabel();
   $('set-sharepreset').value = SHARE_PRESETS[settings.sharePreset] ? settings.sharePreset : 'balanced';
+  const fxSel = $('set-fx');
+  fxSel.innerHTML = '';
+  for (const f of FX_ORDER) {
+    const o = document.createElement('option');
+    o.value = f; o.textContent = FX_LABELS[f] || f;
+    fxSel.appendChild(o);
+  }
+  fxSel.value = FX_ORDER.includes(settings.fx) ? settings.fx : 'none';
   fillRingSelect($('set-ring'), false);
   $('set-ring').value = RINGTONES[settings.ring] ? settings.ring : 'classic';
   $('set-amoled').checked = !!settings.amoled;
@@ -2339,6 +2347,8 @@ function openSettings() {
   $('set-qh-start').value = settings.qhStart || '23:00';
   $('set-qh-end').value = settings.qhEnd || '08:00';
   buildAccentRow();
+  scCapturing = null;
+  renderShortcuts();
   window.aero.getPrefs().then((p) => {
     $('set-tray').checked = !!p.closeToTray;
     $('set-hotkey').checked = !!p.hotkeyMute;
@@ -2353,6 +2363,57 @@ function openSettings() {
 function updateGateLabel() {
   const g = Number($('set-gate').value) || 0;
   $('gate-val').textContent = g <= 0 ? 'Off' : g >= 80 ? 'Aggressive' : g >= 40 ? 'Medium' : 'Light';
+}
+
+/* ---- shortcuts editor ---- */
+function renderShortcuts() {
+  const list = $('sc-list');
+  list.innerHTML = '';
+  for (const [id, label] of SC_ACTIONS) {
+    const row = document.createElement('div');
+    row.className = 'sc-row';
+    const name = document.createElement('span');
+    name.className = 'sc-label';
+    name.textContent = label;
+    const kbd = document.createElement('kbd');
+    kbd.textContent = getBind(id) || 'Unbound';
+    kbd.title = 'Click to rebind';
+    if (scCapturing === id) {
+      kbd.classList.add('capturing');
+      kbd.textContent = 'Press keys…';
+    }
+    kbd.onclick = () => {
+      scCapturing = (scCapturing === id) ? null : id;
+      renderShortcuts();
+      if (scCapturing) $('btn-set-save').focus();
+    };
+    row.appendChild(name); row.appendChild(kbd);
+    list.appendChild(row);
+  }
+}
+
+function endShortcutCapture() {
+  scCapturing = null;
+  renderShortcuts();
+}
+
+function resetShortcuts() {
+  settings.shortcuts = {};
+  saveSettingsData();
+  scCapturing = null;
+  renderShortcuts();
+  updateShortcutTooltips();
+  toast('Shortcuts restored to defaults', 'ok');
+}
+
+function updateShortcutTooltips() {
+  const map = { 'btn-share': 'shareToggle', 'btn-fx': 'fxCycle', 'btn-board': 'board', 'btn-call-chat': 'chatPanel', 'btn-hangup': 'hangup', 'btn-mute': 'mute', 'btn-deafen': 'deafen' };
+  for (const [btnId, action] of Object.entries(map)) {
+    const b = $(btnId);
+    if (!b) continue;
+    const base = b.getAttribute('aria-label') || '';
+    b.title = base + ' (' + getBind(action) + ')';
+  }
 }
 
 async function populateDevices() {
@@ -2418,6 +2479,12 @@ function saveSettings() {
   settings.gate = Number($('set-gate').value) || 0;
   if (RINGTONES[$('set-ring').value]) settings.ring = $('set-ring').value;
   if (SHARE_PRESETS[$('set-sharepreset').value]) settings.sharePreset = $('set-sharepreset').value;
+  if (FX_ORDER.includes($('set-fx').value)) {
+    settings.fx = $('set-fx').value;
+    $('fx-label').textContent = FX_LABELS[settings.fx] || 'Clean';
+    $('btn-fx').classList.toggle('active', settings.fx !== 'none');
+    if (mix && call) setFx(settings.fx);
+  }
   settings.amoled = $('set-amoled').checked;
   settings.qh = $('set-qh').checked;
   settings.qhStart = $('set-qh-start').value || '23:00';
@@ -2478,27 +2545,111 @@ function broadcastHello() {
   for (const c of conns.values()) safeSend(c, helloPayload());
 }
 
+/* ============ shortcuts registry ============ */
+const SC_DEFAULTS = {
+  answerCall: 'Ctrl+Enter',
+  declineCall: 'Esc',
+  mute: 'M',
+  deafen: 'D',
+  shareToggle: 'Ctrl+Shift+S',
+  fxCycle: 'Ctrl+Shift+F',
+  board: 'Ctrl+Shift+B',
+  chatPanel: 'Ctrl+Shift+C',
+  hangup: 'Ctrl+Shift+H',
+  searchChat: 'Ctrl+F',
+  settings: 'Ctrl+,'
+};
+const SC_ACTIONS = [
+  ['answerCall', 'Answer incoming call'],
+  ['declineCall', 'Decline incoming call'],
+  ['mute', 'Mute mic (in call)'],
+  ['deafen', 'Deafen (in call)'],
+  ['shareToggle', 'Screen share'],
+  ['fxCycle', 'Cycle voice effect'],
+  ['board', 'Soundboard'],
+  ['chatPanel', 'Chat panel (in call)'],
+  ['hangup', 'Hang up'],
+  ['searchChat', 'Search chat'],
+  ['settings', 'Open settings']
+];
+
+const normKeyToken = (e) => {
+  const k = e.key;
+  if (k === ' ') return 'Space';
+  if (k === 'Escape') return 'Esc';
+  if (k.length === 1) return k.toUpperCase();
+  return k;
+};
+
+function comboFromEvent(e) {
+  const parts = [];
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+  if (e.metaKey) parts.push('Super');
+  parts.push(normKeyToken(e));
+  return parts.join('+');
+}
+
+function comboMatches(e, binding) {
+  if (!binding) return false;
+  const parts = String(binding).split('+').map(s => s.trim());
+  const key = parts.pop();
+  const need = { ctrl: false, alt: false, shift: false, super: false };
+  for (const p of parts) {
+    const lp = p.toLowerCase();
+    if (lp === 'ctrl' || lp === 'control') need.ctrl = true;
+    else if (lp === 'alt' || lp === 'option') need.alt = true;
+    else if (lp === 'shift') need.shift = true;
+    else if (lp === 'super' || lp === 'meta' || lp === 'win') need.super = true;
+  }
+  if (need.ctrl !== e.ctrlKey || need.alt !== e.altKey || need.shift !== e.shiftKey || need.super !== e.metaKey) return false;
+  return normKeyToken(e).toLowerCase() === key.toLowerCase();
+}
+
+const getBind = (id) => (settings.shortcuts && settings.shortcuts[id]) || SC_DEFAULTS[id] || '';
+
 /* ============ keyboard / shortcuts ============ */
 function typingInField() {
   const el = document.activeElement;
   return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
 }
 
+let scCapturing = null; // action id currently being rebound
+
 window.addEventListener('keydown', (e) => {
+  /* capture mode: swallow the next combo for the row being edited */
+  if (scCapturing) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') { endShortcutCapture(); return; }
+    const combo = comboFromEvent(e);
+    if (!settings.shortcuts) settings.shortcuts = {};
+    for (const [id, b] of Object.entries(settings.shortcuts)) {
+      if (id !== scCapturing && String(b).toLowerCase() === combo.toLowerCase()) {
+        delete settings.shortcuts[id];
+        toast('Cleared duplicate binding');
+      }
+    }
+    settings.shortcuts[scCapturing] = combo;
+    saveSettingsData();
+    endShortcutCapture();
+    renderShortcuts();
+    updateShortcutTooltips();
+    return;
+  }
+
   /* incoming call always wins — even while typing */
   const dlg = $('dlg-incoming');
   if (dlg && dlg.open) {
-    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); acceptIncoming(); return; }
-    if (e.key === 'Escape') { e.preventDefault(); declineIncoming(); return; }
+    if (comboMatches(e, getBind('answerCall'))) { e.preventDefault(); acceptIncoming(); return; }
+    if (comboMatches(e, getBind('declineCall'))) { e.preventDefault(); declineIncoming(); return; }
   }
 
-  if (e.ctrlKey && e.key === ',') { e.preventDefault(); openSettings(); return; }
+  if (comboMatches(e, getBind('settings'))) { e.preventDefault(); openSettings(); return; }
 
   if (typingInField()) return;
 
-  const k = e.key.toLowerCase();
-
-  /* soundboard slots */
   const bd = $('dlg-board');
   if (bd && bd.open && /^[0-9]$/.test(e.key)) {
     e.preventDefault();
@@ -2508,30 +2659,24 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  /* chat search */
-  if (e.ctrlKey && !e.shiftKey && k === 'f' && chatOpen && $('view-chat').classList.contains('active')) {
+  if (comboMatches(e, getBind('searchChat')) && chatOpen && $('view-chat').classList.contains('active')) {
     e.preventDefault();
     $('chat-search-row').classList.remove('hidden');
     $('chat-search').focus();
     return;
   }
 
-  if (!call || call.state === 'incoming') return;
-
-  /* in-call combos */
-  if (e.ctrlKey && e.shiftKey) {
-    switch (k) {
-      case 's': e.preventDefault(); sharingLocal ? stopShare() : openScreenPicker(); return;
-      case 'f': e.preventDefault(); cycleFx(); return;
-      case 'b': e.preventDefault(); Board.open(); return;
-      case 'c': e.preventDefault(); showView($('view-chat').classList.contains('active') ? 'view-call' : 'view-chat'); return;
-      case 'h': e.preventDefault(); hangUp(); return;
-    }
+  if (!call || call.state === 'incoming') {
     return;
   }
 
-  if (k === 'm' && !e.repeat) toggleMute();
-  else if (k === 'd' && !e.repeat) toggleDeafen();
+  if (comboMatches(e, getBind('shareToggle'))) { sharingLocal ? stopShare() : openScreenPicker(); return; }
+  if (comboMatches(e, getBind('fxCycle'))) { cycleFx(); return; }
+  if (comboMatches(e, getBind('board'))) { Board.open(); return; }
+  if (comboMatches(e, getBind('chatPanel'))) { showView($('view-chat').classList.contains('active') ? 'view-call' : 'view-chat'); return; }
+  if (comboMatches(e, getBind('hangup'))) { hangUp(); return; }
+  if (comboMatches(e, getBind('mute'))) { toggleMute(); return; }
+  if (comboMatches(e, getBind('deafen'))) { toggleDeafen(); return; }
 });
 
 window.addEventListener('keyup', () => {});
@@ -2657,7 +2802,23 @@ async function boot() {
   });
 
   $('btn-set-save').onclick = saveSettings;
-  $('btn-set-cancel').onclick = () => { try { $('dlg-settings').close(); } catch {} };
+  $('btn-set-cancel').onclick = () => { scCapturing = null; try { $('dlg-settings').close(); } catch {} };
+
+  $('set-tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-tab]');
+    if (!b) return;
+    for (const x of $('set-tabs').children) x.classList.toggle('active', x === b);
+    for (const page of document.querySelectorAll('#dlg-settings .tab-page')) {
+      page.classList.toggle('active', page.dataset.page === b.dataset.tab);
+    }
+  });
+  $('btn-sc-reset').onclick = resetShortcuts;
+  $('dlg-settings').addEventListener('close', () => { scCapturing = null; });
+  $('set-fx').addEventListener('change', (e) => {
+    settings.fx = e.target.value;
+    saveSettingsData();
+    Sounds.fxTick();
+  });
 
   $('btn-nick-save').onclick = saveNickname;
   $('btn-nick-cancel').onclick = () => { try { $('dlg-nick').close(); } catch {} };
@@ -2888,6 +3049,7 @@ async function boot() {
   initPeer();
   renderRequests();
   applyTheme();
+  updateShortcutTooltips();
   setInterval(() => { sweepPresence(); renderChatStatus(); }, 20000);
 }
 
