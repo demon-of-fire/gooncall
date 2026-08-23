@@ -1,0 +1,36 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('aero', {
+  minimize: () => ipcRenderer.invoke('win:minimize'),
+  maximize: () => ipcRenderer.invoke('win:maximize'),
+  close: () => ipcRenderer.invoke('win:close'),
+  focus: () => ipcRenderer.invoke('win:focus'),
+  flash: (on) => ipcRenderer.invoke('win:flash', on),
+  getData: (name) => ipcRenderer.invoke('data:get', name),
+  setData: (name, value) => ipcRenderer.invoke('data:set', name, value),
+  getScreens: () => ipcRenderer.invoke('screens:list'),
+  notify: (title, body, code) => ipcRenderer.invoke('notify', title, body, code),
+  onNotifyClick: (cb) => ipcRenderer.on('notify-click', (_e, code) => cb(code)),
+  getPrefs: () => ipcRenderer.invoke('prefs:get'),
+  setPref: (key, value) => ipcRenderer.invoke('prefs:set', key, value),
+  onHotkey: (cb) => ipcRenderer.on('hotkey', (_e, k) => cb(k)),
+
+  listSounds: () => ipcRenderer.invoke('sounds:list'),
+  readSound: (name) => ipcRenderer.invoke('sounds:read', name),
+  deleteSound: (name) => ipcRenderer.invoke('sounds:delete', name),
+  openSoundsFolder: () => ipcRenderer.invoke('sounds:open-folder'),
+  pickSounds: () => ipcRenderer.invoke('sounds:pick'),
+  openLogsFolder: () => ipcRenderer.invoke('logs:open'),
+  openExternal: (url) => ipcRenderer.invoke('shell:external', url),
+  getVersion: () => ipcRenderer.invoke('app:version'),
+  clipWrite: (text) => ipcRenderer.invoke('clip:write', text),
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+
+  xferBegin: (id, name) => ipcRenderer.invoke('xfer:begin', id, name),
+  xferAppend: (id, chunk) => ipcRenderer.invoke('xfer:append', id, chunk),
+  xferFinish: (id) => ipcRenderer.invoke('xfer:finish', id),
+  xferAbort: (id) => ipcRenderer.invoke('xfer:abort', id),
+  showFile: (p) => ipcRenderer.invoke('file:show', p),
+  openReceivedFolder: () => ipcRenderer.invoke('files:open-received')
+});

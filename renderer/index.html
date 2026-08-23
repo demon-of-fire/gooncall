@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' wss: https:; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob: mediastream:;" />
+  <title>GoonCall — free global voice calls</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="vendor/peerjs.min.js" defer></script>
+</head></head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+
+  <div id="titlebar">
+    <div class="tb-brand"><span class="logo-dot"></span>GoonCall</div>
+    <div class="tb-actions">
+      <button id="tb-min" aria-label="Minimize">&#x2500;</button>
+      <button id="tb-max" aria-label="Maximize">&#x25A1;</button>
+      <button id="tb-close" aria-label="Close">&#x2715;</button>
+    </div>
+  </div>
+
+  <div id="app">
+    <aside id="sidebar" aria-label="Primary navigation">
+      <section id="profile">
+        <div id="avatar">?</div>
+        <div class="prof-meta">
+          <div id="prof-name">You</div>
+          <div id="prof-code" class="code"></div>
+        </div>
+        <button id="btn-copy-code" class="icon-btn" aria-label="Copy your code">&#x1F4CB;</button>
+      </section>
+
+      <div class="side-actions">
+        <button id="btn-add-friend" class="primary-btn">+ Add friend</button>
+        <button id="btn-settings" class="icon-btn" aria-label="Settings">&#x2699;</button>
+      </div>
+
+      <section id="requests-wrap" class="hidden" aria-label="Friend requests">
+        <h2 class="side-label">Requests <span id="requests-badge" class="req-badge hidden"></span></h2>
+        <ul id="requests-list" role="list"></ul>
+      </section>
+
+      <nav aria-label="Friends">
+        <h2 class="side-label">Friends</h2>
+        <ul id="friends-list" role="list"></ul>
+      </nav>
+
+      <footer id="conn-state" aria-live="polite">Connecting&#8230;</footer>
+    </aside>
+
+    <main id="main">
+      <section id="view-home" class="view active">
+        <header><h1>Welcome to AeroCall</h1></header>
+        <p class="sub">Voice calls &amp; screen sharing, straight to your friends. No codes to swap every call.</p>
+        <div class="center hint">Click <b>+ Add friend</b> and paste their code once &mdash; then call them any time with one click.</div>
+        <section id="recent-wrap" class="hidden" aria-label="Recent calls">
+          <h2 class="side-label center-label">Recent calls</h2>
+          <ul id="recent-list" role="list"></ul>
+        </section>
+      </section>
+
+      <section id="view-chat" class="view">
+        <header id="chat-header">
+          <button id="btn-chat-back" class="icon-btn" aria-label="Back to friends">&#x2190;</button>
+          <div id="chat-peer-name" class="name"></div>
+          <div id="chat-peer-status" class="status"></div>
+          <span id="chat-typing" class="typing hidden">typing&#8230;</span>
+          <button id="btn-chat-nick" class="icon-btn chat-tool-first" aria-label="Rename friend" title="Rename">&#x270E;</button>
+          <button id="btn-chat-search" class="icon-btn" aria-label="Search messages" title="Search">&#x1F50D;</button>
+          <button id="btn-chat-clear" class="icon-btn" aria-label="Clear messages" title="Clear messages">&#x1F5D1;</button>
+          <button id="btn-chat-call" class="ctrl on chat-call-btn" aria-label="Start voice call" title="Call">&#x1F50A;<span>Call</span></button>
+        </header>
+        <div id="in-call-banner" class="banner hidden" aria-live="polite">
+          In call with <span id="banner-peer"></span> <button id="btn-return-call">Return to call</button>
+        </div>
+        <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+        <div id="reply-bar" class="reply-bar hidden">
+          <span class="rb-label">Replying to <b id="rb-name"></b>: <span id="rb-text"></span></span>
+          <button id="btn-reply-cancel" class="icon-btn" aria-label="Cancel reply">&#x2715;</button>
+        </div>
+        <div id="chat-search-row" class="chat-search-row hidden">
+          <input id="chat-search" type="text" placeholder="Search this chat&#8230;" autocomplete="off" aria-label="Search messages" />
+          <span id="search-count" class="status"></span>
+          <button id="btn-search-close" class="icon-btn" aria-label="Close search">&#x2715;</button>
+        </div>
+        <div id="chat-log-wrap">
+          <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+          <button id="jump-btn" class="jump-btn hidden" aria-label="Jump to latest">&#x2B07;</button>
+          <div id="drop-hint" class="drop-hint hidden">Drop files to send</div>
+        </div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" type="text" placeholder="Message&#8230;" autocomplete="off" aria-label="Message" />
+          <button type="button" id="btn-emoji" class="voice-btn" aria-label="Emoji" title="Emoji">&#x1F60A;</button>
+          <button type="button" id="btn-voice" class="voice-btn" aria-label="Record voice message" title="Record voice message">&#x1F3A4;</button>
+          <button type="submit">Send</button>
+        </form>
+        <div id="emoji-pop" class="emoji-pop hidden" role="menu"></div>
+      </section>
+
+      <section id="view-call" class="view">
+        <header id="call-header">
+          <div class="h-left">
+            <span id="call-peer-name" class="name"></span>
+            <span id="call-status" class="status"></span>
+            <span id="call-timer" class="timer" aria-hidden="true"></span>
+          </div>
+          <div class="h-right">
+            <button id="btn-stats" class="quality-pill" title="Connection stats">&#x2014;</button>
+            <button id="btn-mute" class="ctrl on" aria-label="Mute microphone" aria-pressed="false"><span>Mic</span></button>
+            <button id="btn-deafen" class="ctrl on" aria-label="Deafen" aria-pressed="false">&#x1F507;<span>Deaf</span></button>
+            <button id="btn-fx" class="ctrl" aria-label="Cycle voice effect" title="Voice effect">&#x1F39B;<span id="fx-label">Clean</span></button>
+            <button id="btn-board" class="ctrl" aria-label="Soundboard" title="Soundboard">&#x1F3B5;<span>Board</span></button>
+            <button id="btn-share" class="ctrl" aria-label="Share your screen" aria-pressed="false">&#x1F5FA;<span>Share</span></button>
+            <button id="btn-call-chat" class="ctrl" aria-label="Open chat">&#x1F4AC;<span>Chat</span></button>
+            <button id="btn-hangup" class="ctrl danger" aria-label="Hang up">&#x23F6;<span>Leave</span></button>
+          </div>
+        </header>
+        <div id="call-stage" class="stage">
+          <div class="stage-audio">
+            <div class="audio-tile">
+              <div id="av-local" class="audio local"><span id="av-local-name" class="av-initials"></span></div>
+              <div class="av-caption">You</div>
+            </div>
+            <div class="audio-tile">
+              <div id="av-remote" class="audio remote" tabindex="0"><span id="av-remote-name" class="av-initials"></span></div>
+              <div class="av-caption"><span id="av-remote-sub" class="muted-chip"></span></div>
+            </div>
+          </div>
+          <video id="share-video" class="hidden" autoplay playsinline></video>
+          <div id="share-label" class="share-label hidden"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="dlg-incoming" aria-modal="true" aria-labelledby="inc-title">
+    <div id="inc-avatar" class="inc-avatar">?</div>
+    <h2 id="inc-title">Incoming call</h2>
+    <p id="inc-from"></p>
+    <div class="dialog-actions">
+      <button id="btn-decline" class="ghost-btn danger-btn">Decline</button>
+      <button id="btn-accept" class="primary-btn accept-btn" autofocus>Accept</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-addfriend" aria-modal="true" aria-labelledby="af-title">
+    <h2 id="af-title">Add friend</h2>
+    <label class="field"><span>Paste their 8&#8209;character code</span>
+      <input id="af-code" class="upper-input" type="text" maxlength="8" autocomplete="off" spellcheck="false" aria-label="Friend's code" />
+    </label>
+    <p class="set-hint">They'll see a request from you. Once they add you back you can call each other.</p>
+    <div class="dialog-actions">
+      <button id="btn-af-cancel" class="ghost-btn">Cancel</button>
+      <button id="btn-af-add" class="primary-btn">Add</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-settings" aria-modal="true" aria-labelledby="set-title">
+    <h2 id="set-title">Settings</h2>
+    <div class="set-grid">
+      <label class="field span2"><span>Display name</span>
+        <input id="set-name" type="text" maxlength="32" aria-label="Your display name" />
+      </label>
+      <label class="field span2"><span>Status (friends see this)</span>
+        <input id="set-status" type="text" maxlength="80" placeholder="e.g. grinding ranked" aria-label="Your status" />
+      </label>
+      <label class="field"><span>Microphone</span>
+        <select id="set-mic"></select>
+      </label>
+      <label class="field"><span>Speaker</span>
+        <select id="set-speaker"></select>
+      </label>
+      <div class="set-checks span2 row-wrap">
+        <label><input type="checkbox" id="set-echo" /> Echo cancel</label>
+        <label><input type="checkbox" id="set-noise" /> Noise suppress</label>
+        <label><input type="checkbox" id="set-agc" /> Auto gain</label>
+        <label><input type="checkbox" id="set-notifs" /> Notifications</label>
+        <button id="btn-mic-test" class="ghost-btn small-btn" type="button">Test mic &#x1F50A;</button>
+      </div>
+      <div class="meter-wrap span2"><div id="mic-meter"><i></i></div></div>
+      <label class="field"><span>Ringtone</span>
+        <select id="set-ring"></select>
+      </label>
+      <label class="field"><span>Noise gate &mdash; <b id="gate-val">Off</b></span>
+        <input type="range" id="set-gate" min="0" max="100" step="5" aria-label="Noise gate" />
+      </label>
+      <label class="field"><span>Ringtone &amp; sounds &mdash; <b id="ringvol-val">70</b>%</span>
+        <input type="range" id="set-ringvol" min="0" max="100" step="5" aria-label="Ringtone volume" />
+      </label>
+      <label class="field"><span>Screen share quality</span>
+        <select id="set-sharepreset">
+          <option value="fluid">Fluid &mdash; 720p @ 30fps</option>
+          <option value="balanced">Balanced &mdash; 1080p @ 15fps</option>
+          <option value="crisp">Crisp &mdash; 1440p @ 10fps</option>
+        </select>
+      </label>
+      <div class="field span2"><span>Accent</span>
+        <div id="accent-row" role="radiogroup" aria-label="Accent color"></div>
+      </div>
+      <div class="set-checks span2 row-wrap">
+        <label><input type="checkbox" id="set-amoled" /> AMOLED black</label>
+        <label><input type="checkbox" id="set-qh" /> Quiet hours</label>
+        <input type="time" id="set-qh-start" value="23:00" aria-label="Quiet from" />
+        <span class="qh-dash">&rarr;</span>
+        <input type="time" id="set-qh-end" value="08:00" aria-label="Quiet until" />
+      </div>
+    </div>
+    <div class="set-divider"></div>
+    <div class="set-checks row-wrap">
+      <label><input type="checkbox" id="set-tray" /> Close hides to tray</label>
+      <label><input type="checkbox" id="set-hotkey" /> Global mute hotkey (Ctrl+Shift+M)</label>
+      <label><input type="checkbox" id="set-autostart" /> Start with Windows</label>
+    </div>
+    <div class="about-row">
+      <span id="app-version" class="ver">AeroCall</span>
+      <button id="btn-open-received" class="ghost-btn small-btn" type="button">Received files</button>
+      <button id="btn-open-sounds" class="ghost-btn small-btn" type="button">Sounds folder</button>
+      <button id="btn-open-logs" class="ghost-btn small-btn" type="button">Open logs</button>
+      <button id="btn-updates" class="ghost-btn small-btn" type="button">Check updates</button>
+    </div>
+    <p class="set-hint">Mic processing applies on your next call. Friends see your name/status update instantly.</p>
+    <div class="dialog-actions">
+      <button id="btn-set-cancel" class="ghost-btn">Cancel</button>
+      <button id="btn-set-save" class="primary-btn">Save</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-nick" aria-modal="true" aria-labelledby="nick-title">
+    <h2 id="nick-title">Rename friend</h2>
+    <label class="field"><span>Nickname (empty = their name)</span>
+      <input id="nick-input" type="text" maxlength="32" aria-label="Nickname" />
+    </label>
+    <label class="field"><span>Note (only you see this)</span>
+      <input id="note-input" type="text" maxlength="120" aria-label="Note" />
+    </label>
+    <label class="field"><span>Their ringtone when they call you</span>
+      <select id="nick-ring"></select>
+    </label>
+    <div class="dialog-actions">
+      <button id="btn-nick-cancel" class="ghost-btn">Cancel</button>
+      <button id="btn-nick-save" class="primary-btn">Save</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-board" aria-modal="true" aria-labelledby="board-title">
+    <h2 id="board-title">&#x1F3B5; Soundboard <span class="board-hint">(keys 1&ndash;9, 0 play clips into the call)</span></h2>
+    <div id="board-grid" class="board-grid"></div>
+    <div class="board-foot">
+      <label><input type="checkbox" id="board-monitor" checked /> Hear clips locally</label>
+      <label class="bv">Vol <input type="range" id="board-vol" min="0" max="100" step="5" /></label>
+      <button id="btn-board-add" class="ghost-btn small-btn" type="button">+ Add sounds</button>
+      <button id="btn-board-folder" class="ghost-btn small-btn" type="button">Folder</button>
+      <button id="btn-board-close" class="primary-btn" type="button">Done</button>
+    </div>
+  </dialog>
+
+  <div id="stats-overlay" class="stats-overlay hidden" role="status"></div>
+
+  <audio id="remote-audio" autoplay></audio>
+  <div id="toasts" role="status" aria-live="polite"></div>
+  <div id="toasts-alert" role="alert" aria-live="assertive"></div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

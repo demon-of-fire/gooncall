@@ -1,0 +1,45 @@
+{
+  "name": "gooncall",
+  "productName": "GoonCall",
+  "version": "1.1.0",
+  "description": "Private P2P voice calls & screen sharing for Windows. No accounts, no invite codes â€” add friends once, call in one click.",
+  "main": "main.js",
+  "author": "GoonCall",
+  "scripts": {
+    "start": "electron .",
+    "release": "powershell -ExecutionPolicy Bypass -File release.ps1",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.gooncall.app",
+    "productName": "GoonCall",
+    "artifactName": "gooncall setup.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "assets/**/*",
+      "!smoke.log"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "GoonCall"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "peerjs": "^1.5.5"
+  }
+}
