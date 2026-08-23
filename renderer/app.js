@@ -2468,34 +2468,63 @@ function broadcastHello() {
   for (const c of conns.values()) safeSend(c, helloPayload());
 }
 
-/* ============ keyboard ============ */
+/* ============ keyboard / shortcuts ============ */
 function typingInField() {
   const el = document.activeElement;
   return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
 }
 
 window.addEventListener('keydown', (e) => {
-  if (typingInField()) return;
-  if (e.ctrlKey && e.key === ',') { e.preventDefault(); openSettings(); return; }
-  const k = e.key.toLowerCase();
-  if (k === 'm' && !e.repeat && call && call.state !== 'incoming') {
-    toggleMute();
-  } else if (k === 'd' && !e.repeat && call && call.state !== 'incoming') {
-    toggleDeafen();
+  /* incoming call always wins — even while typing */
+  const dlg = $('dlg-incoming');
+  if (dlg && dlg.open) {
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); acceptIncoming(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); declineIncoming(); return; }
   }
-});
 
-window.addEventListener('keyup', () => {});
+  if (e.ctrlKey && e.key === ',') { e.preventDefault(); openSettings(); return; }
 
-window.addEventListener('keydown', (e) => {
+  if (typingInField()) return;
+
+  const k = e.key.toLowerCase();
+
+  /* soundboard slots */
   const bd = $('dlg-board');
-  if (bd && bd.open && !typingInField() && /^[0-9]$/.test(e.key)) {
+  if (bd && bd.open && /^[0-9]$/.test(e.key)) {
     e.preventDefault();
     const idx = e.key === '0' ? 9 : Number(e.key) - 1;
     const f = Board.files[idx];
     if (f) playSoundFile(f.name);
+    return;
   }
+
+  /* chat search */
+  if (e.ctrlKey && !e.shiftKey && k === 'f' && chatOpen && $('view-chat').classList.contains('active')) {
+    e.preventDefault();
+    $('chat-search-row').classList.remove('hidden');
+    $('chat-search').focus();
+    return;
+  }
+
+  if (!call || call.state === 'incoming') return;
+
+  /* in-call combos */
+  if (e.ctrlKey && e.shiftKey) {
+    switch (k) {
+      case 's': e.preventDefault(); sharingLocal ? stopShare() : openScreenPicker(); return;
+      case 'f': e.preventDefault(); cycleFx(); return;
+      case 'b': e.preventDefault(); Board.open(); return;
+      case 'c': e.preventDefault(); showView($('view-chat').classList.contains('active') ? 'view-call' : 'view-chat'); return;
+      case 'h': e.preventDefault(); hangUp(); return;
+    }
+    return;
+  }
+
+  if (k === 'm' && !e.repeat) toggleMute();
+  else if (k === 'd' && !e.repeat) toggleDeafen();
 });
+
+window.addEventListener('keyup', () => {});
 
 window.addEventListener('focus', () => {
   winFocused = true;

@@ -99,13 +99,13 @@
           </div>
           <div class="h-right">
             <button id="btn-stats" class="quality-pill" title="Connection stats">&#x2014;</button>
-            <button id="btn-mute" class="ctrl on" aria-label="Mute microphone" aria-pressed="false"><span>Mic</span></button>
-            <button id="btn-deafen" class="ctrl on" aria-label="Deafen" aria-pressed="false">&#x1F507;<span>Deaf</span></button>
-            <button id="btn-fx" class="ctrl" aria-label="Cycle voice effect" title="Voice effect">&#x1F39B;<span id="fx-label">Clean</span></button>
-            <button id="btn-board" class="ctrl" aria-label="Soundboard" title="Soundboard">&#x1F3B5;<span>Board</span></button>
-            <button id="btn-share" class="ctrl" aria-label="Share your screen" aria-pressed="false">&#x1F5FA;<span>Share</span></button>
-            <button id="btn-call-chat" class="ctrl" aria-label="Open chat">&#x1F4AC;<span>Chat</span></button>
-            <button id="btn-hangup" class="ctrl danger" aria-label="Hang up">&#x23F6;<span>Leave</span></button>
+            <button id="btn-mute" class="ctrl on" aria-label="Mute microphone (M)" aria-pressed="false" title="Mute (M)"><span>Mic</span></button>
+            <button id="btn-deafen" class="ctrl on" aria-label="Deafen (D)" aria-pressed="false" title="Deafen (D)">&#x1F507;<span>Deaf</span></button>
+            <button id="btn-fx" class="ctrl" aria-label="Cycle voice effect (Ctrl+Shift+F)" title="Voice effect (Ctrl+Shift+F)">&#x1F39B;<span id="fx-label">Clean</span></button>
+            <button id="btn-board" class="ctrl" aria-label="Soundboard (Ctrl+Shift+B)" title="Soundboard (Ctrl+Shift+B)">&#x1F3B5;<span>Board</span></button>
+            <button id="btn-share" class="ctrl" aria-label="Share your screen (Ctrl+Shift+S)" aria-pressed="false" title="Share screen (Ctrl+Shift+S)">&#x1F5FA;<span>Share</span></button>
+            <button id="btn-call-chat" class="ctrl" aria-label="Open chat (Ctrl+Shift+C)" title="Chat (Ctrl+Shift+C)">&#x1F4AC;<span>Chat</span></button>
+            <button id="btn-hangup" class="ctrl danger" aria-label="Hang up (Ctrl+Shift+H)" title="Hang up (Ctrl+Shift+H)">&#x23F6;<span>Leave</span></button>
           </div>
         </header>
         <div id="call-stage" class="stage">
@@ -130,6 +130,7 @@
     <div id="inc-avatar" class="inc-avatar">?</div>
     <h2 id="inc-title">Incoming call</h2>
     <p id="inc-from"></p>
+    <p class="inc-hint">Ctrl+Enter to accept &middot; Esc to decline</p>
     <div class="dialog-actions">
       <button id="btn-decline" class="ghost-btn danger-btn">Decline</button>
       <button id="btn-accept" class="primary-btn accept-btn" autofocus>Accept</button>

@@ -119,6 +119,31 @@ The app is chromeless — there are no min/max/close buttons:
 - **Close** — Alt+F4 or right-click menu (goes to tray unless Quit)
 - Everything also lives in the **tray icon**: left-click to show, right-click for Open/Quit
 
+## Shortcuts
+
+**Anytime:**
+
+| Keys | Action |
+|---|---|
+| Ctrl+, | Settings |
+| Ctrl+Enter | **Answer incoming call** (works even while typing) |
+| Esc | Decline incoming call / close dialogs |
+
+**In call:**
+
+| Keys | Action |
+|---|---|
+| M | Mute mic |
+| D | Deafen |
+| Ctrl+Shift+S | Start/stop screen share |
+| Ctrl+Shift+F | Cycle voice effect |
+| Ctrl+Shift+B | Soundboard |
+| Ctrl+Shift+C | Toggle chat panel |
+| Ctrl+Shift+H | Hang up |
+| 1–9, 0 | Play soundboard clips (board open) |
+
+**In chat:** Ctrl+F opens search.
+
 ## Data & privacy
 
 - Everything lives locally: `%APPDATA%\GoonCall\` (identity, friends, chats, history, sounds, received files)
