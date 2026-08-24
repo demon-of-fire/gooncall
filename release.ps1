@@ -29,8 +29,8 @@ $msg = $env:RELEASE_MSG
 if (-not $msg) { $msg = 'changes' }
 git commit -m "changes: $msg"
 
-# bump patch version -> creates the vX.Y.Z commit + tag
-npm version patch
+# bump version -> creates the vX.Y.Z commit + tag (FORCE_VERSION overrides, e.g. 1.2.0)
+if ($env:FORCE_VERSION) { npm version $env:FORCE_VERSION } else { npm version patch }
 
 Write-Host "Pushing code + tags (this triggers the GitHub Actions build and release)..."
 git push origin main --follow-tags

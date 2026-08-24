@@ -411,3 +411,15 @@ body.amoled { --bg0:#000; --bg1:#111214; --bg2:#161719; --bg3:#222326; }
 ::-webkit-scrollbar { width:8px; }
 ::-webkit-scrollbar-thumb { background:var(--bg0); border-radius:99px; }
 ::-webkit-scrollbar-thumb:hover { background:#111; }
+
+/* pins / nudge / whiteboard */
+.pin-strip { display:flex; gap:6px; padding:6px 14px; border-bottom:1px solid rgba(0,0,0,.25); overflow-x:auto; background:var(--bg1); flex-shrink:0; }
+.pin-strip.hidden { display:none !important; }
+.pin-chip { font-size:11.5px; background:var(--bg3); border-radius:99px; padding:3px 11px; color:var(--txt); white-space:nowrap; }
+.pin-chip:hover { outline:1px solid var(--acc); }
+@keyframes nudgeshake { 0%,100% { transform:translateX(0);} 20% { transform:translateX(-7px);} 40% { transform:translateX(7px);} 60% { transform:translateX(-5px);} 80% { transform:translateX(5px);} }
+body.nudged #app { animation:nudgeshake .5s ease; }
+#wb-canvas { position:absolute; inset:24px; width:calc(100% - 48px); height:calc(100% - 48px); z-index:2; background:rgba(255,255,255,.03); border-radius:14px; box-shadow:inset 0 0 60px rgba(0,0,0,.35); }
+#wb-canvas.hidden { display:none !important; }
+.onb-step { display:flex; gap:14px; align-items:flex-start; margin-bottom:16px; }
+.onb-num { width:30px; height:30px; border-radius:50%; background:var(--acc); color:#fff; font-weight:800; display:grid; place-items:center; flex-shrink:0; font-size:14px; }

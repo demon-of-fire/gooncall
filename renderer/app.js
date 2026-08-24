@@ -53,13 +53,23 @@ const Sounds = {
   vol() { return Math.max(0, Math.min(1, ((typeof settings !== 'undefined' ? settings.ringVol : 70) || 70) / 100)); },
   ringToneFor(code) {
     const f = friendByCode(code);
-    return RINGTONES[(f && f.ring) || settings.ring] ? ((f && f.ring) || settings.ring) : 'classic';
+    return (f && f.ring) || settings.ring || 'classic';
   },
   startRing(kind, code) {
     this.stopRing();
     const v = this.vol();
     if (kind === 'incoming') {
       if (qhActive()) { this.ringIv = setInterval(() => {}, 2500); return; }
+      const f = friendByCode(code);
+      const fr = f && f.ring;
+      // custom ringtone from the soundboard folder
+      if (fr && fr.startsWith('snd:')) {
+        const name = fr.slice(4);
+        const fire = () => playSoundFile(name, { localOnly: true });
+        fire();
+        this.ringIv = setInterval(fire, 3400);
+        return;
+      }
       const tone = RINGTONES[this.ringToneFor(code)] || RINGTONES.classic;
       let step = 0;
       const playStep = () => {
@@ -99,7 +109,8 @@ let settings = {
   status: '', ring: 'classic', gate: 0,
   sharePreset: 'balanced', accent: 'violet', amoled: false,
   qh: false, qhStart: '23:00', qhEnd: '08:00',
-  boardVol: 80, boardMonitor: true, fx: 'none'
+  boardVol: 80, boardMonitor: true, fx: 'none',
+  pins: {}
 };
 let pendingIn = [];     // [{code,name}] incoming friend requests
 let dismissedCodes = [];// codes whose requests were denied
@@ -216,7 +227,11 @@ const displayName = (code) => {
 /* ============ webrtc config ============ */
 const RTC_CFG = {
   iceServers: [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    // OpenRelay - free public TURN, no card required. Insurance for nasty NATs.
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
   ]
 };
 
@@ -485,6 +500,16 @@ async function onData(conn, raw) {
     case 'xfer-chunk': recvXferChunk(conn, m); break;
     case 'xfer-end': recvXferEnd(conn, m); break;
 
+    case 'bump': {
+      if (call && call.peerCode === code) break;
+      Sounds.blip([180, 240, 180], .12, .08);
+      document.body.classList.add('nudged');
+      setTimeout(() => document.body.classList.remove('nudged'), 500);
+      toast('⚡ ' + displayName(code) + ' nudged you', '', true);
+      if (canNotify()) window.aero.notify(displayName(code), 'Nudged you!', code);
+      break;
+    }
+
     case 'prank': {
       const nm = String(m.name || '');
       if (nm && /\.(wav|mp3|ogg|m4a|flac|webm)$/i.test(nm)) playSoundFile(nm, { localOnly: true });
@@ -496,6 +521,36 @@ async function onData(conn, raw) {
       if (m.k === 'open') mirrorWatch(String(m.url || ''));
       else if (m.k === 'close') closeWatch(true);
       else if (m.k === 'st') applyWatchState(m);
+      else if (m.k === 'q') { watchQueue = Array.isArray(m.q) ? m.q.slice(0, 20) : []; updateQueueBadge(); toast('Queue updated: ' + watchQueue.length + ' up next'); }
+      else if (m.k === 'rate') { watchRate = Number(m.r) || 1; applyWatchRate(); }
+      break;
+    }
+
+    case 'wb': {
+      if (!call || call.peerCode !== code) break;
+      if (m.k === 'on') { if (!wbOn) toggleWhiteboard(); }
+      else if (m.k === 'off') { if (wbOn) toggleWhiteboard(); }
+      else if (m.k === 'c') clearWhiteboard(false);
+      else {
+        const col = String(m.c || '#5865f2');
+        const w = Number(m.w) || 3;
+        const x = wctx();
+        if (m.k === 's' && Array.isArray(m.pts)) {
+          wbStrokes.push({ c: col, w, pts: m.pts });
+          drawWbStroke(x, { c: col, w, pts: m.pts });
+        } else if (m.k === 'd' && Array.isArray(m.p)) {
+          let cur = wbStrokes[wbStrokes.length - 1];
+          if (!cur || cur.remote !== true) { cur = { c: col, w, pts: [], remote: true }; wbStrokes.push(cur); }
+          cur.pts.push(m.p);
+          const pts = cur.pts;
+          x.strokeStyle = col; x.lineWidth = w;
+          x.beginPath();
+          x.moveTo(pts[pts.length - 2] ? pts[pts.length - 2][0] * x.canvas.width : m.p[0] * x.canvas.width,
+                   pts[pts.length - 2] ? pts[pts.length - 2][1] * x.canvas.height : m.p[1] * x.canvas.height);
+          x.lineTo(m.p[0] * x.canvas.width, m.p[1] * x.canvas.height);
+          x.stroke();
+        }
+      }
       break;
     }
 
@@ -713,6 +768,7 @@ const CHUNK = 24 * 1024;
 const MAX_XFER = 4 * 1024 * 1024 * 1024;   // 4 GB
 const DISK_THRESHOLD = 25 * 1024 * 1024;   // above this, stream to disk on the far end
 const blobStore = new Map();
+const activeSounds = new Set();
 const xfersIn = new Map();
 const xfersOut = new Map();                // id -> {cancelled}
 
@@ -849,14 +905,23 @@ async function recvXferEnd(conn, m) {
   xfersIn.delete(String(m.id));
 
   let finalPath = null;
+  let packBlob = null;
   if (x.disk) {
     finalPath = await window.aero.xferFinish(String(m.id));
   } else {
     const blob = new Blob(x.chunks.filter(Boolean), { type: x.meta.mime });
     blobStore.set(x.meta.id, blob);
+    if ((x.meta.name || '').endsWith('.goonpack')) packBlob = blob;
   }
 
   const entry = (chats[x.code] || []).find(c => c.id === x.meta.id);
+  if (packBlob) {
+    await importGoonPack(packBlob);
+    const idx = (chats[x.code] || []).findIndex(c => c.id === x.meta.id);
+    if (idx >= 0) { chats[x.code].splice(idx, 1); saveChats(); }
+    if (chatOpen === x.code) renderChatLog(x.code);
+    return;
+  }
   if (entry) {
     delete entry.xfer;
     if (finalPath) entry.diskPath = finalPath;
@@ -1477,6 +1542,13 @@ function duckMic(on) {
   mix.micGain.gain.setTargetAtTime(on ? 0.22 : 1, mix.ctx.currentTime, on ? 0.01 : 0.3);
 }
 
+function stopAllSounds() {
+  for (const s of activeSounds) { try { s.stop(); } catch {} }
+  activeSounds.clear();
+  duckMic(false);
+  toast('All sounds stopped');
+}
+
 async function playSoundFile(name, opts = {}) {
   let raw;
   try { raw = await window.aero.readSound(name); } catch { return; }
@@ -1487,6 +1559,8 @@ async function playSoundFile(name, opts = {}) {
     const buf = await ctx.decodeAudioData(raw.slice(0));
     const srcN = ctx.createBufferSource();
     srcN.buffer = buf;
+    activeSounds.add(srcN);
+    srcN.onended = () => activeSounds.delete(srcN);
     const g = ctx.createGain();
     g.gain.value = Math.max(0, (Number(settings.boardVol) || 80) / 100) * 1.4;
     srcN.connect(g);
@@ -2301,6 +2375,14 @@ function closeWatch(localOnly = false) {
   window.removeEventListener('message', onWatchMessage);
 }
 
+function nextInQueue() {
+  if (!watch || !watch.host || !watchQueue.length) return;
+  const nxt = watchQueue.shift();
+  sigSend({ t: 'watch', k: 'q', q: watchQueue });
+  updateQueueBadge();
+  openWatch(nxt);
+}
+
 function mirrorWatch(url) {
   const id = ytId(url);
   const kind = id ? 'yt' : 'file';
@@ -2316,9 +2398,26 @@ function mirrorWatch(url) {
 }
 
 let watchIv = null;
+let watchQueue = [];
+let watchRate = 1;
+
+function applyWatchRate() {
+  if (!watch) return;
+  if (watch.kind === 'yt') ytPost('setPlaybackRate', [watchRate]);
+  else { const v = document.querySelector('#watch-mount video'); if (v) v.playbackRate = watchRate; }
+  const sel = $('w-speed');
+  if (sel && String(sel.value) !== String(watchRate)) sel.value = String(watchRate);
+}
+
+function updateQueueBadge() {
+  const el = $('w-queue-n');
+  if (!el) return;
+  el.textContent = watchQueue.length ? '+' + watchQueue.length + ' queued' : '';
+  el.classList.toggle('hidden', !watchQueue.length);
+}
 
 function hostState() {
-  return { p: watch.playing ? 1 : 0, pos: readWatchPos() };
+  return { p: watch.playing ? 1 : 0, pos: readWatchPos(), r: watchRate };
 }
 
 function startWatchSync() {
@@ -2326,7 +2425,7 @@ function startWatchSync() {
     if (!watch || !call) { clearInterval(watchIv); watchIv = null; return; }
     if (watch.host) {
       const s = hostState();
-      sigSend({ t: 'watch', k: 'st', p: s.p, pos: s.pos });
+      sigSend({ t: 'watch', k: 'st', p: s.p, pos: s.pos, r: watchRate });
     } else {
       // drift correction against the host's last known timeline
       const elapsed = (Date.now() - watch.lastSync) / 1000;
@@ -2355,6 +2454,7 @@ function applyWatchState(m) {
   watch.playing = m.p === 1;
   watch.pos = Number(m.pos) || 0;
   watch.lastSync = Date.now();
+  if (m.r && m.r !== watchRate) { watchRate = Number(m.r); applyWatchRate(); }
   setWatchPlaying(watch.playing);
   seekWatch(watch.pos);
   $('w-state').textContent = watch.playing ? 'synced · playing' : 'paused';
@@ -2431,6 +2531,120 @@ function canvasPoint(e) {
   const r = c.getBoundingClientRect();
   return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
 }
+/* ============ whiteboard (call) — dedicated canvas, independent of share ============ */
+let wbOn = false;
+let wbStrokes = [];
+let wbLive = null;
+let lastWbDot = 0;
+let wbColor = '#5865f2';
+const WB_COLORS = ['#5865f2', '#f23f43', '#23a55a', '#f0b232', '#ffffff'];
+
+function sizeWbCanvas() {
+  const c = $('wb-canvas');
+  const st = $('call-stage');
+  if (!c || !st.clientWidth) return;
+  const w = Math.max(50, st.clientWidth - 48);
+  const h = Math.max(50, st.clientHeight - 48);
+  if (c.width !== w || c.height !== h) {
+    c.width = w; c.height = h;
+    redrawWb();
+  }
+}
+window.addEventListener('resize', () => setTimeout(sizeWbCanvas, 60));
+
+function wctx() {
+  const c = $('wb-canvas');
+  const x = c.getContext('2d');
+  x.lineCap = 'round'; x.lineJoin = 'round';
+  return x;
+}
+
+function drawWbStroke(x, s) {
+  if (!s.pts.length) return;
+  x.strokeStyle = s.c; x.lineWidth = s.w;
+  x.beginPath();
+  x.moveTo(s.pts[0][0] * x.canvas.width, s.pts[0][1] * x.canvas.height);
+  for (let i = 1; i < s.pts.length; i++) x.lineTo(s.pts[i][0] * x.canvas.width, s.pts[i][1] * x.canvas.height);
+  if (s.pts.length === 1) x.lineTo(s.pts[0][0] * x.canvas.width + 1, s.pts[0][1] * x.canvas.height);
+  x.stroke();
+}
+
+function redrawWb() {
+  const x = wctx();
+  x.clearRect(0, 0, x.canvas.width, x.canvas.height);
+  for (const s of wbStrokes) drawWbStroke(x, s);
+  if (wbLive) drawWbStroke(x, wbLive);
+}
+
+function toggleWhiteboard() {
+  if (!call) return;
+  wbOn = !wbOn;
+  $('btn-wb').classList.toggle('on', wbOn);
+  const c = $('wb-canvas');
+  c.classList.toggle('hidden', !wbOn);
+  c.classList.toggle('draw-on', wbOn);
+  if (wbOn) {
+    sizeWbCanvas();
+    sigSend({ t: 'ctrl', k: 'wb-on' });
+    wbColor = WB_COLORS[(WB_COLORS.indexOf(wbColor) + 1) % WB_COLORS.length];
+    toast('Whiteboard ON — pen cycles colors, right-click clears.', 'ok');
+  } else {
+    sigSend({ t: 'ctrl', k: 'wb-off' });
+  }
+}
+
+function clearWhiteboard(broadcast) {
+  wbStrokes = []; wbLive = null;
+  const c = $('wb-canvas');
+  if (c && c.width) c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  if (broadcast) sigSend({ t: 'wb', k: 'c' });
+}
+
+/* ============ quick screenshot ============ */
+async function snipAndSend() {
+  const target = chatOpen || (call && call.peerCode);
+  if (!target) { toast('Open a chat or call first', 'err'); return; }
+  toast('Capturing your screen…');
+  try {
+    const dataUrl = await window.aero.captureScreen();
+    if (!dataUrl) { toast('Capture failed', 'err'); return; }
+    const blob = await (await fetch(dataUrl)).blob();
+    const prevOpen = chatOpen;
+    if (chatOpen !== target) openChat(target);
+    await sendAttachment('image', blob, 'snip-' + Date.now() + '.png');
+  } catch { toast('Screenshot failed', 'err'); }
+}
+
+/* ============ sound pack export / import ============ */
+async function exportSoundPack() {
+  if (!Board.files.length) { toast('No sounds to export', 'err'); return; }
+  const out = { v: 1, app: 'gooncall', files: [] };
+  for (const f of Board.files) {
+    try {
+      const ab = await window.aero.readSound(f.name);
+      if (ab) out.files.push({ name: f.name, b64: u8ToB64(new Uint8Array(ab)) });
+    } catch {}
+  }
+  const code = chatOpen || (call && call.peerCode);
+  if (!code) { toast('Open a chat to send the pack', 'err'); return; }
+  sendAttachment('file', new Blob([JSON.stringify(out)], { type: 'application/goonpack' }), 'board.goonpack');
+}
+
+async function importGoonPack(blob) {
+  try {
+    const data = JSON.parse(await blob.text());
+    if (!data.files || !Array.isArray(data.files)) throw new Error('bad pack');
+    let n = 0;
+    for (const f of data.files.slice(0, 100)) {
+      const u8 = b64ToU8(String(f.b64 || ''));
+      await window.aero.saveSound(String(f.name).slice(0, 80), u8.buffer);
+      n++;
+    }
+    Board.refresh();
+    toast('Imported ' + n + ' sounds from pack', 'ok');
+  } catch { toast('Not a valid .goonpack file', 'err'); }
+}
+
 async function openScreenPicker() {
   let sources = [];
   try { sources = await window.aero.getScreens(); } catch { toast('Cannot list screens', 'err'); return; }
@@ -3052,6 +3266,38 @@ function typingInField() {
 
 let scCapturing = null; // action id currently being rebound
 
+function togglePin(code, id) {
+  if (!settings.pins) settings.pins = {};
+  const arr = settings.pins[code] || [];
+  const i = arr.indexOf(id);
+  if (i >= 0) arr.splice(i, 1);
+  else { arr.push(id); if (arr.length > 5) arr.shift(); }
+  settings.pins[code] = arr;
+  saveSettingsData();
+  renderPinStrip(code);
+  renderChatLog(code);
+}
+
+function renderPinStrip(code) {
+  const strip = $('pin-strip');
+  const ids = (settings.pins && settings.pins[code]) || [];
+  strip.innerHTML = '';
+  strip.classList.toggle('hidden', !ids.length);
+  for (const pid of ids) {
+    const e = (chats[code] || []).find(c => c.id === pid);
+    if (!e) continue;
+    const chip = document.createElement('button');
+    chip.className = 'pin-chip';
+    chip.textContent = '📌 ' + ((e.text || e.name || '').slice(0, 40) || 'message');
+    chip.title = 'Jump to pinned message';
+    chip.onclick = () => {
+      const row = document.querySelector('.msg[data-mid="' + pid + '"]');
+      if (row) { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.style.background = 'rgba(88,101,242,.2)'; setTimeout(() => { row.style.background = ''; }, 1000); }
+    };
+    strip.appendChild(chip);
+  }
+}
+
 window.addEventListener('keydown', (e) => {
   /* capture mode: swallow the next combo for the row being edited */
   if (scCapturing) {
@@ -3157,6 +3403,9 @@ function openCtxMenu(x, y, entry) {
   if (entry.me && !entry.deleted) {
     add('Delete', () => deleteMessage(chatOpen, entry.id), 'danger');
   }
+  const pinList = (settings.pins && settings.pins[chatOpen]) || [];
+  const isPinned = entry.id && pinList.includes(entry.id);
+  add(isPinned ? 'Unpin' : 'Pin', () => togglePin(chatOpen, entry.id), isPinned ? '' : 'danger');
   document.body.appendChild(m);
   const r = m.getBoundingClientRect();
   m.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
@@ -3188,7 +3437,7 @@ function saveNickname() {
   const note = $('note-input').value.trim().slice(0, 120);
   if (note) f.note = note; else delete f.note;
   const ring = $('nick-ring').value;
-  if (ring && RINGTONES[ring]) f.ring = ring; else delete f.ring;
+  if (ring && (RINGTONES[ring] || ring.startsWith('snd:'))) f.ring = ring; else delete f.ring;
   saveFriends();
   renderFriends(); renderRecent();
   $('chat-peer-name').textContent = displayName(chatOpen);
@@ -3578,7 +3827,6 @@ async function boot() {
   function openSwitcher() {
     const rows = [...friends].sort((a, b) => (a.nick || a.name).localeCompare(b.nick || b.name));
     const list = $('sw-list');
-    list.dataset.sel = '0';
     const paint = (q) => {
       list.innerHTML = '';
       const f2 = rows.filter(f => ((f.nick || f.name) + f.code).toLowerCase().includes(q.toLowerCase()));
@@ -3632,6 +3880,96 @@ async function boot() {
     }
   });
 
+  window.addEventListener('keydown', (e) => {
+    if (comboMatches(e, getBind('switcher'))) {
+      e.preventDefault();
+      if (!$('dlg-switcher').open) openSwitcher();
+      else try { $('dlg-switcher').close(); } catch {}
+    }
+  });
+
+  $('btn-nudge').onclick = () => {
+    if (!chatOpen) return;
+    sigSend({ t: 'bump' });
+    document.body.classList.add('nudged');
+    setTimeout(() => document.body.classList.remove('nudged'), 500);
+    Sounds.blip([180, 240, 180], .12, .07);
+    toast('Nudged ' + displayName(chatOpen));
+  };
+
+  /* quote jump */
+  $('chat-log').addEventListener('click', (e) => {
+    const q = e.target.closest('.quote');
+    if (!q || !q.dataset.qid) return;
+    const row = document.querySelector('.msg[data-mid="' + q.dataset.qid + '"]');
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.style.transition = 'background .2s';
+      row.style.background = 'rgba(88,101,242,.25)';
+      setTimeout(() => { row.style.background = ''; }, 1200);
+    }
+  });
+
+  /* whiteboard + snip dock buttons */
+  $('btn-wb').onclick = toggleWhiteboard;
+  $('btn-snip').onclick = snipAndSend;
+  $('wb-canvas').addEventListener('pointerdown', (e) => {
+    if (!wbOn) return;
+    $('wb-canvas').setPointerCapture(e.pointerId);
+    const r = $('wb-canvas').getBoundingClientRect();
+    const pt = [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+    wbLive = { c: wbColor, w: 3, pts: [pt] };
+    drawWbStroke(wctx(), wbLive);
+    sigSend({ t: 'wb', k: 'd', p: pt, c: wbColor, w: 3 });
+  });
+  $('wb-canvas').addEventListener('pointermove', (e) => {
+    if (!wbLive) return;
+    const r = $('wb-canvas').getBoundingClientRect();
+    const pt = [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+    wbLive.pts.push(pt);
+    drawWbStroke(wctx(), wbLive);
+    const now = Date.now();
+    if (now - lastWbDot > 45) {
+      lastWbDot = now;
+      sigSend({ t: 'wb', k: 'd', p: pt, c: wbColor, w: 3 });
+    }
+  });
+  const endWbStroke = () => {
+    if (!wbLive) return;
+    wbStrokes.push(wbLive);
+    sigSend({ t: 'wb', k: 's', pts: wbLive.pts, c: wbLive.c, w: wbLive.w });
+    wbLive = null;
+  };
+  $('wb-canvas').addEventListener('pointerup', endWbStroke);
+  $('wb-canvas').addEventListener('pointercancel', endWbStroke);
+  $('wb-canvas').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    clearWhiteboard(true);
+  });
+
+  /* board extras: export / import / stop all */
+  $('btn-board-export').onclick = () => exportSoundPack();
+  $('btn-board-import').onclick = async () => {
+    const picked = await window.aero.pickFiles();
+    for (const f of (picked || [])) {
+      if (f.name.endsWith('.goonpack')) {
+        try {
+          const ab = await window.aero.readFile(f.path);
+          await importGoonPack(new Blob([ab]));
+        } catch {}
+      }
+    }
+  };
+  $('btn-stop-all').onclick = stopAllSounds;
+
+  /* watch speed select */
+  $('w-speed').addEventListener('change', (e) => {
+    if (!watch || !watch.host) return;
+    watchRate = Number(e.target.value) || 1;
+    applyWatchRate();
+    sigSend({ t: 'watch', k: 'rate', r: watchRate });
+  });
+
   window.aero.onUpdateStatus((s) => {
     if (!s) return;
     if (s.status === 'downloaded') {
@@ -3683,6 +4021,18 @@ async function boot() {
   applyTheme();
   updateShortcutTooltips();
   setInterval(() => { sweepPresence(); renderChatStatus(); }, 20000);
+  maybeOnboarding();
+}
+
+async function maybeOnboarding() {
+  if (friends.length > 0) return;
+  if (await window.aero.getData('seenOnboarding')) return;
+  const d = $('dlg-onboarding');
+  $('btn-onb-done').onclick = () => {
+    window.aero.setData('seenOnboarding', true);
+    try { d.close(); } catch {}
+  };
+  if (typeof d.showModal === 'function') d.showModal(); else d.setAttribute('open', '');
 }
 
 boot().catch((err) => console.error('BOOT FAIL:', err && err.stack));

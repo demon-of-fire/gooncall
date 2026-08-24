@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('aero', {
   getData: (name) => ipcRenderer.invoke('data:get', name),
   setData: (name, value) => ipcRenderer.invoke('data:set', name, value),
   getScreens: () => ipcRenderer.invoke('screens:list'),
+  captureScreen: () => ipcRenderer.invoke('screen:capture'),
   notify: (title, body, code) => ipcRenderer.invoke('notify', title, body, code),
   onNotifyClick: (cb) => ipcRenderer.on('notify-click', (_e, code) => cb(code)),
   getPrefs: () => ipcRenderer.invoke('prefs:get'),

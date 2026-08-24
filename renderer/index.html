@@ -73,8 +73,10 @@
           <button id="btn-chat-search" class="icon-btn chat-tool-first" aria-label="Search messages" title="Search (Ctrl+F)">&#x1F50D;</button>
           <button id="btn-chat-nick" class="icon-btn" aria-label="Rename friend" title="Rename / note / ringtone">&#x270E;</button>
           <button id="btn-chat-clear" class="icon-btn" aria-label="Clear messages" title="Clear messages">&#x1F5D1;</button>
+          <button id="btn-nudge" class="icon-btn" aria-label="Nudge" title="Nudge them">&#x26A1;</button>
           <button id="btn-chat-call" class="ctrl on chat-call-btn" aria-label="Start voice call" title="Call">&#x1F50A;<span>Call</span></button>
         </header>
+        <div id="pin-strip" class="pin-strip hidden"></div>
         <div id="in-call-banner" class="banner hidden" aria-live="polite">
           In call with <span id="banner-peer"></span> <button id="btn-return-call">Return to call</button>
         </div>
@@ -128,6 +130,7 @@
           </div>
           <video id="share-video" class="hidden" autoplay playsinline></video>
           <canvas id="share-canvas" class="hidden"></canvas>
+          <canvas id="wb-canvas" class="hidden"></canvas>
           <div id="watch-mount" class="hidden"></div>
           <div id="watch-bar" class="watch-bar hidden">
             <input id="watch-url" type="text" placeholder="Paste a YouTube or direct video link&#8230;" autocomplete="off" spellcheck="false" />
@@ -136,7 +139,14 @@
           </div>
           <div id="watch-ctl" class="watch-ctl hidden">
             <button id="w-play" class="dock-btn small" type="button">&#x25B6;/&#x23F8;</button>
+            <select id="w-speed" class="ghost-btn small-btn" aria-label="Playback speed">
+              <option value="1">1x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2x</option>
+            </select>
             <span id="w-state" class="status">synced</span>
+            <span id="w-queue-n" class="status hidden"></span>
           </div>
           <div id="share-label" class="share-label hidden"></div>
         </div>
@@ -146,6 +156,8 @@
           <button id="btn-fx" class="dock-btn" aria-label="Cycle voice effect" title="Voice effect (Ctrl+Shift+F)">&#x1F39B;<i id="fx-label">Clean</i></button>
           <button id="btn-board" class="dock-btn" aria-label="Soundboard" title="Soundboard (Ctrl+Shift+B)">&#x1F3B5;<i>Board</i></button>
           <button id="btn-watch" class="dock-btn" aria-label="Watch together" title="Watch together">&#x1F4FA;<i>Watch</i></button>
+          <button id="btn-wb" class="dock-btn" aria-label="Whiteboard" title="Whiteboard">&#x1F5D2;<i>Board2</i></button>
+          <button id="btn-snip" class="dock-btn" aria-label="Send screenshot" title="Send screenshot of your screen">&#x1F4F8;<i>Snip</i></button>
           <button id="btn-share" class="dock-btn" aria-label="Share your screen" aria-pressed="false" title="Share screen (Ctrl+Shift+S)">&#x1F5FA;<i>Share</i></button>
           <button id="btn-draw" class="dock-btn hidden" aria-label="Draw on share" title="Draw on your share">&#x270F;<i>Draw</i></button>
           <button id="btn-call-chat" class="dock-btn" aria-label="Open chat" title="Chat (Ctrl+Shift+C)">&#x1F4AC;<i>Chat</i></button>
@@ -305,10 +317,22 @@
       <label><input type="checkbox" id="board-monitor" checked /> Hear clips locally</label>
       <label class="bv">Vol <input type="range" id="board-vol" min="0" max="100" step="5" /></label>
       <button id="btn-board-rec" class="ghost-btn small-btn" type="button">● Record mic</button>
+      <button id="btn-board-export" class="ghost-btn small-btn" type="button">Send pack</button>
+      <button id="btn-board-import" class="ghost-btn small-btn" type="button">Import pack</button>
+      <button id="btn-stop-all" class="ghost-btn small-btn" type="button">Stop all</button>
       <button id="btn-board-add" class="ghost-btn small-btn" type="button">+ Add sounds</button>
       <button id="btn-board-folder" class="ghost-btn small-btn" type="button">Folder</button>
       <button id="btn-board-close" class="primary-btn" type="button">Done</button>
     </div>
+  </dialog>
+
+  <dialog id="dlg-onboarding" aria-modal="true">
+    <h2 style="text-align:center">Welcome to GoonCall</h2>
+    <p style="text-align:center;color:var(--txt-dim);font-size:13.5px;line-height:1.7">This is your private line - just you and your people.</p>
+    <div class="onb-step"><span class="onb-num">1</span><div><b>Copy your code</b><br><span class="status">Send it to the one person who matters (any messenger).</span></div></div>
+    <div class="onb-step"><span class="onb-num">2</span><div><b>Hit + on the rail</b><br><span class="status">Paste their code. When they do the same, green dot = call time.</span></div></div>
+    <div class="onb-step"><span class="onb-num">3</span><div><b>Click their name to chat, phone icon to call</b><br><span class="status">Screen share, watch parties, whiteboard and soundboard included. Free forever.</span></div></div>
+    <div class="dialog-actions"><button id="btn-onb-done" class="primary-btn">Let's go</button></div>
   </dialog>
 
   <dialog id="dlg-switcher" aria-modal="true" aria-labelledby="sw-title">

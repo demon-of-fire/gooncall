@@ -608,6 +608,15 @@ ipcMain.handle('screens:list', async () => {
   }));
 });
 
+/* full-screen grab for quick-screenshot sending */
+ipcMain.handle('screen:capture', async () => {
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } });
+    if (!sources.length) return null;
+    return sources[0].thumbnail.toDataURL();
+  } catch { return null; }
+});
+
 ipcMain.handle('notify', (_e, title, body, code) => {
   try {
     if (Notification.isSupported()) {
