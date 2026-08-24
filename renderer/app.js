@@ -1588,86 +1588,184 @@ async function playSoundFile(name, opts = {}) {
 
 let boardRec = null;
 
-async function toggleBoardRec() {
-  const btn = $('btn-board-rec');
-  if (boardRec && boardRec.state === 'recording') { try { boardRec.stop(); } catch {} return; }
-  let stream;
-  try {
-    stream = (call && call.micStream) ? new MediaStream(call.micStream.getAudioTracks()) : await getMic();
-  } catch { toast('Microphone unavailable', 'err'); return; }
-  const chunks = [];
-  try {
-    boardRec = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm' });
-  } catch { toast('Recording not supported', 'err'); return; }
-  boardRec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-  boardRec.onstop = async () => {
-    btn.textContent = '● Record mic';
-    btn.classList.remove('rec');
-    const blob = new Blob(chunks, { type: 'audio/webm' });
-    if (blob.size < 1500) { toast('Too short — nothing saved'); return; }
-    const name = 'clip-' + Date.now() + '.webm';
-    const ab = await blob.arrayBuffer();
-    await window.aero.saveSound(name, ab);
-    Board.refresh();
-    toast('Saved to board: ' + name, 'ok');
-  };
-  boardRec.start();
-  btn.classList.add('rec');
-  btn.textContent = '■ Stop rec';
+async function openScreenPicker() {
+  let sources = [];
+  try { sources = await window.aero.getScreens(); } catch { toast('Cannot list screens', 'err'); return; }
+  if (!sources.length) { toast('No screens found', 'err'); return; }
+  const bd = document.createElement('div');
+  bd.id = 'picker-backdrop';
+  const picker = document.createElement('div');
+  picker.id = 'screen-picker';
+  picker.innerHTML =
+    '<div class="modal-head">Share a screen or window <button class="pick-close">&#x2715;</button></div>' +
+    '<div class="picker-grid"></div>' +
+    '<div class="picker-foot"><label class="pick-audio"><input type="checkbox" id="pick-sysaudio" checked /> Include system audio</label>' +
+    '<button class="pick-cancel ghost-btn">Cancel</button></div>';
+  const grid = picker.querySelector('.picker-grid');
+  for (const s of sources) {
+    const item = document.createElement('button');
+    item.className = 'pick-item';
+    item.innerHTML = '<img src="' + s.thumb + '" /><div class="pick-name">' + escapeHtml(s.name) + '</div>';
+    item.onclick = () => {
+      bd.remove();
+      startShare(s.id, picker.querySelector('#pick-sysaudio').checked)
+        .catch(() => toast('Could not start sharing', 'err'));
+    };
+    grid.appendChild(item);
+  }
+  bd.appendChild(picker);
+  document.body.appendChild(bd);
+  picker.querySelector('.pick-close').onclick = () => bd.remove();
+  picker.querySelector('.pick-cancel').onclick = () => bd.remove();
+  bd.addEventListener('click', (e) => { if (e.target === bd) bd.remove(); });
 }
 
-/* ---- soundboard UI ---- */
-const Board = {
-  files: [],
-  async refresh() {
-    this.files = (await window.aero.listSounds()) || [];
-    this.renderGrid();
-  },
-  renderGrid() {
-    const grid = $('board-grid');
-    grid.innerHTML = '';
-    if (!this.files.length) {
-      grid.innerHTML = '<div class="snd-empty">No sounds yet.<br>Record with <b>Record mic</b>, click <b>+ Add sounds</b>, or drop files into the sounds folder.<br>Unlimited clips &mdash; first 10 get hotkeys.</div>';
-      return;
-    }
-    this.files.forEach((f, i) => {
-      const tile = document.createElement('button');
-      tile.className = 'snd-tile';
-      tile.title = f.name;
-      const key = i < 9 ? String(i + 1) : i === 9 ? '0' : '';
-    tile.innerHTML =
-      '<span class="snd-key">' + key + '</span>' +
-      '<span class="snd-play">&#x266A;</span>' +
-      '<span class="snd-name">' + escapeHtml(f.name.replace(/\.[^.]+$/, '')) + '</span>' +
-      '<span class="snd-del" title="Delete">&#x2715;</span>';
-    tile.title = 'Click: play into call · Shift+click: play on their speakers';
-    tile.onclick = (e) => {
-      if (e.target.classList.contains('snd-del')) {
-        window.aero.deleteSound(f.name).then(() => this.refresh());
-        toast('Deleted ' + f.name);
-        return;
-      }
-      if (e.shiftKey && call) {
-        // prank mode: fires on their machine's speakers
-        sigSend({ t: 'prank', name: f.name });
-        toast('Sent to ' + displayName(call.peerCode) + "'s speakers 😈");
-        return;
-      }
-      const route = call ? 'into the call' : 'locally (no active call)';
-      playSoundFile(f.name).then(r => { if (r === 'missing') toast('Clip file missing', 'err'); });
-      void route;
-    };
-    grid.appendChild(tile);
-  });
-  },
-  async open() {
-    await this.refresh();
-    $('board-vol').value = settings.boardVol;
-    $('board-monitor').checked = !!settings.boardMonitor;
-    const dlg = $('dlg-board');
-    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+/* ============ views / profile / friends ============ */
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  $(name).classList.add('active');
+  updateBanner();
+  if (name === 'view-call' && call && call.connectedTs) startTimer();
+}
+
+function updateBanner() {
+  const banner = $('in-call-banner');
+  const active = call && (call.state === 'active' || call.state === 'connecting' || call.state === 'outgoing');
+  const visible = active && $('view-chat').classList.contains('active');
+  banner.classList.toggle('hidden', !visible);
+  if (visible) $('banner-peer').textContent = displayName(call.peerCode);
+}
+
+function renderProfile() {
+  $('prof-name').textContent = identity.name;
+  $('prof-code').textContent = identity.code;
+  const av = $('avatar');
+  av.textContent = initials(identity.name);
+  av.style.background = 'linear-gradient(135deg,hsl(' + identity.hue + ',70%,55%),hsl(' + ((identity.hue + 40) % 360) + ',70%,45%))';
+  renderConnState();
+}
+
+function renderConnState() {
+  const dot = $('rail-dot');
+  if (dot) dot.classList.toggle('online', peerOnline);
+  const up = $('up-dot');
+  if (up) up.classList.toggle('online', peerOnline && !isIdle);
+}
+
+function friendRow(f) {
+  const st = peerState[f.code] || {};
+  const on = isOnline(f.code);
+  const li = document.createElement('li');
+  li.className = 'friend-item';
+  li.dataset.code = f.code;
+  if (f.note) li.dataset.note = f.note;
+  li.title = (f.note ? f.note + '\n' : '') + '#' + f.code;
+
+  const hue = (f.hue != null) ? f.hue : 220;
+  const av = document.createElement('div');
+  av.className = 'friend-avatar ' + (!on ? '' : (st.idle ? 'dot-idle' : 'dot-online'));
+  av.style.background = 'linear-gradient(135deg,hsl(' + hue + ',62%,52%),hsl(' + ((hue + 40) % 360) + ',62%,42%))';
+  av.textContent = initials(f.nick || f.name);
+
+  const meta = document.createElement('div');
+  meta.className = 'friend-meta';
+  const nm = document.createElement('span');
+  nm.className = 'friend-name';
+  nm.textContent = (f.pending ? '[pending] ' : '') + (f.nick || f.name);
+  const sub = document.createElement('span');
+  sub.className = 'friend-sub';
+  sub.textContent = !on
+    ? '#' + f.code
+    : (st.idle ? 'Idle' : '') + (st.status ? ((st.idle ? ' · ' : '') + st.status) : (st.idle ? '' : '# ' + f.code));
+  meta.appendChild(nm); meta.appendChild(sub);
+
+  li.appendChild(av); li.appendChild(meta);
+
+  const badge = document.createElement('span');
+  badge.className = 'friend-badge' + (unread[f.code] ? '' : ' hidden');
+  badge.textContent = unread[f.code] || '';
+  li.appendChild(badge);
+
+  const callBtn = document.createElement('button');
+  callBtn.className = 'friend-action friend-call';
+  callBtn.title = 'Call ' + (f.nick || f.name);
+  callBtn.innerHTML = '&#128222;';
+  callBtn.onclick = (e) => { e.stopPropagation(); startCall(f.code); };
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'friend-action friend-remove';
+  delBtn.title = 'Remove ' + (f.nick || f.name);
+  delBtn.innerHTML = '&#x2715;';
+  delBtn.onclick = (e) => { e.stopPropagation(); removeFriend(f.code); };
+
+  li.appendChild(callBtn); li.appendChild(delBtn);
+  li.onclick = () => openChat(f.code);
+  return li;
+}
+
+function renderFriends() {
+  const list = $('friends-list');
+  const chip = $('acq-count');
+  if (chip) chip.textContent = friends.length ? String(friends.length) : '';
+  list.innerHTML = '';
+  if (!friends.length) {
+    const empty = document.createElement('li');
+    empty.className = 'friends-empty';
+    empty.innerHTML = 'No acquaintances yet.<br>Hit the <b>+</b> on the rail and paste their code.';
+    list.appendChild(empty);
+    return;
   }
-};
+  const filter = ($('friend-filter').value || '').trim().toLowerCase();
+  let sorted = [...friends].sort((a, b) => (a.nick || a.name).localeCompare(b.nick || b.name));
+  if (filter) sorted = sorted.filter(f => ((f.nick || f.name) + ' ' + f.code + ' ' + (f.note || '')).toLowerCase().includes(filter));
+  if (!sorted.length) {
+    const none = document.createElement('li');
+    none.className = 'friends-empty';
+    none.textContent = 'No matches.';
+    list.appendChild(none);
+    return;
+  }
+  const mkGroup = (label, arr) => {
+    if (!arr.length) return;
+    const h = document.createElement('div');
+    h.className = 'group-label';
+    h.textContent = label + ' — ' + arr.length;
+    list.appendChild(h);
+    for (const f of arr) list.appendChild(friendRow(f));
+  };
+  mkGroup('Online', sorted.filter(f => isOnline(f.code)));
+  mkGroup('Offline', sorted.filter(f => !isOnline(f.code)));
+}
+
+function removeFriend(code) {
+  const f = friendByCode(code);
+  friends = friends.filter(x => x.code !== code);
+  delete chats[code];
+  delete outbox[code];
+  setUnread(code, 0);
+  saveFriends(); saveChats(); saveOutbox();
+  const c = conns.get(code);
+  if (c) { try { c.close(); } catch {} conns.delete(code); }
+  if (chatOpen === code) { chatOpen = null; showView('view-home'); }
+  renderFriends(); renderRecent();
+  toast('Removed ' + (f ? (f.nick || f.name) : 'friend'));
+}
+
+function addFriendByCode(raw) {
+  const code = String(raw || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^[A-Z0-9]{8}$/.test(code)) { toast('Codes are 8 letters/digits', 'err'); return false; }
+  if (code === identity.code) { toast("That's your own code", 'err'); return false; }
+  const existing = friendByCode(code);
+  if (existing && !existing.pending) { toast('Already on your list', ''); return false; }
+  if (existing) { toast('Request already sent — waiting for them', ''); return false; }
+  upsertFriend(code, 'Friend-' + code.slice(0, 4));
+  friendByCode(code).pending = true;
+  saveFriends(); renderFriends();
+  toast('Request sent — you can chat once they add you back', 'ok');
+  ensureConn(code).catch(() => {});
+  openChat(code);
+  return true;
+}
 
 function cycleFx() {
   if (!call) return;
@@ -2294,542 +2392,8 @@ function stopShare(fromEnded = false) {
   applyStage();
 }
 
-/* ============ watch party ============ */
-let watch = null; // {url, kind, host, playing, pos, lastSync, applying}
-let ytTime = 0;
 
-const ytId = (url) => {
-  const m = /(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/.exec(url);
-  return m ? m[1] : null;
-};
 
-function ytPost(func, args = []) {
-  const f = document.querySelector('#watch-mount iframe');
-  if (f && f.contentWindow) {
-    try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch {}
-  }
-}
-
-function readWatchPos() {
-  if (!watch) return 0;
-  if (watch.kind === 'yt') return ytTime;
-  const v = document.querySelector('#watch-mount video');
-  return v ? v.currentTime : 0;
-}
-
-function setWatchPlaying(play) {
-  if (!watch) return;
-  if (watch.kind === 'yt') { play ? ytPost('playVideo') : ytPost('pauseVideo'); }
-  else { const v = document.querySelector('#watch-mount video'); if (v) { play ? v.play().catch(() => {}) : v.pause(); } }
-}
-
-function seekWatch(pos) {
-  if (!watch) return;
-  if (watch.kind === 'yt') ytPost('seekTo', [pos, true]);
-  else { const v = document.querySelector('#watch-mount video'); if (v) v.currentTime = pos; }
-}
-
-function buildPlayer(url, kind, isHost) {
-  const mount = $('watch-mount');
-  mount.innerHTML = '';
-  if (kind === 'yt') {
-    const f = document.createElement('iframe');
-    f.src = 'https://www.youtube.com/embed/' + url + '?enablejsapi=1&autoplay=1&controls=' + (isHost ? '1' : '0') + '&rel=0&modestbranding=1';
-    f.allow = 'autoplay; encrypted-media; fullscreen';
-    f.setAttribute('allowfullscreen', '');
-    mount.appendChild(f);
-  } else {
-    const v = document.createElement('video');
-    v.src = url;
-    v.autoplay = true;
-    v.controls = isHost;
-    v.playsInline = true;
-    mount.appendChild(v);
-  }
-}
-
-function showWatchStage(on) {
-  $('watch-mount').classList.toggle('hidden', !on);
-  $('call-stage').classList.toggle('sharing', on || sharingLocal || remoteSharing);
-  applyStage();
-}
-
-function openWatch(url) {
-  if (!call) { toast('Start a call first', 'err'); return; }
-  const id = ytId(url);
-  const kind = id ? 'yt' : 'file';
-  watch = { url: id ? id : url, kind, host: true, playing: false, pos: 0, lastSync: Date.now(), applying: false };
-  buildPlayer(watch.url, kind, true);
-  sigSend({ t: 'watch', k: 'open', url: url });
-  $('btn-watch').classList.add('on');
-  $('watch-bar').classList.add('hidden');
-  $('watch-ctl').classList.remove('hidden');
-  showWatchStage(true);
-  toast(kind === 'yt' ? 'YouTube synced — you control playback' : 'Video synced — you control playback', 'ok');
-  if (!watchIv) startWatchSync();
-}
-
-function closeWatch(localOnly = false) {
-  if (!watch) return;
-  watch = null;
-  if (watchIv) { clearInterval(watchIv); watchIv = null; }
-  $('watch-mount').innerHTML = '';
-  $('btn-watch').classList.remove('on');
-  $('watch-ctl').classList.add('hidden');
-  $('watch-bar').classList.add('hidden');
-  showWatchStage(false);
-  if (!localOnly) sigSend({ t: 'watch', k: 'close' });
-  window.removeEventListener('message', onWatchMessage);
-}
-
-function nextInQueue() {
-  if (!watch || !watch.host || !watchQueue.length) return;
-  const nxt = watchQueue.shift();
-  sigSend({ t: 'watch', k: 'q', q: watchQueue });
-  updateQueueBadge();
-  openWatch(nxt);
-}
-
-function mirrorWatch(url) {
-  const id = ytId(url);
-  const kind = id ? 'yt' : 'file';
-  watch = { url: id ? id : url, kind, host: false, playing: false, pos: 0, lastSync: Date.now(), applying: false };
-  buildPlayer(watch.url, kind, false);
-  $('btn-watch').classList.add('on');
-  $('watch-bar').classList.add('hidden');
-  $('watch-ctl').classList.remove('hidden');
-  showWatchStage(true);
-  window.addEventListener('message', onWatchMessage);
-  toast('Watching together — they control playback');
-  if (!watchIv) startWatchSync();
-}
-
-let watchIv = null;
-let watchQueue = [];
-let watchRate = 1;
-
-function applyWatchRate() {
-  if (!watch) return;
-  if (watch.kind === 'yt') ytPost('setPlaybackRate', [watchRate]);
-  else { const v = document.querySelector('#watch-mount video'); if (v) v.playbackRate = watchRate; }
-  const sel = $('w-speed');
-  if (sel && String(sel.value) !== String(watchRate)) sel.value = String(watchRate);
-}
-
-function updateQueueBadge() {
-  const el = $('w-queue-n');
-  if (!el) return;
-  el.textContent = watchQueue.length ? '+' + watchQueue.length + ' queued' : '';
-  el.classList.toggle('hidden', !watchQueue.length);
-}
-
-function hostState() {
-  return { p: watch.playing ? 1 : 0, pos: readWatchPos(), r: watchRate };
-}
-
-function startWatchSync() {
-  watchIv = setInterval(() => {
-    if (!watch || !call) { clearInterval(watchIv); watchIv = null; return; }
-    if (watch.host) {
-      const s = hostState();
-      sigSend({ t: 'watch', k: 'st', p: s.p, pos: s.pos, r: watchRate });
-    } else {
-      // drift correction against the host's last known timeline
-      const elapsed = (Date.now() - watch.lastSync) / 1000;
-      const expected = watch.pos + (watch.playing ? elapsed : 0);
-      const cur = readWatchPos();
-      if (watch.playing && Math.abs(cur - expected) > 1.8) seekWatch(expected);
-    }
-  }, 2000);
-}
-
-function onWatchMessage(e) {
-  try {
-    if (!e.origin.includes('youtube')) return;
-    const d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-    if (d.event === 'infoDelivery' && d.info && typeof d.info.currentTime === 'number') ytTime = d.info.currentTime;
-    if ((d.event === 'onStateChange' || d.event === 'infoDelivery') && watch && !watch.host && d.info) {
-      const playing = d.info.playerState === 1;
-      if (playing !== watch.playing && !watch.applying) setWatchPlaying(watch.playing); // guests don't get to pause
-    }
-  } catch {}
-}
-
-function applyWatchState(m) {
-  if (!watch || watch.host) return;
-  watch.applying = true;
-  watch.playing = m.p === 1;
-  watch.pos = Number(m.pos) || 0;
-  watch.lastSync = Date.now();
-  if (m.r && m.r !== watchRate) { watchRate = Number(m.r); applyWatchRate(); }
-  setWatchPlaying(watch.playing);
-  seekWatch(watch.pos);
-  $('w-state').textContent = watch.playing ? 'synced · playing' : 'paused';
-  setTimeout(() => { if (watch) watch.applying = false; }, 400);
-}
-
-/* ============ share annotations ============ */
-let drawOn = false;
-let drawColor = '#ff4d6a';
-const DRAW_COLORS = ['#ff4d6a', '#ffd23f', '#2fd57c', '#39c5cf'];
-let allStrokes = [];
-let liveStroke = null;
-let lastNetDot = 0;
-
-function sizeShareCanvas() {
-  const c = $('share-canvas');
-  const v = $('share-video');
-  if (!c || !v || !v.clientWidth) return;
-  if (c.width !== v.clientWidth || c.height !== v.clientHeight) {
-    c.width = v.clientWidth;
-    c.height = v.clientHeight;
-    redrawStrokes();
-  }
-}
-window.addEventListener('resize', () => setTimeout(sizeShareCanvas, 60));
-
-function ctxOf() {
-  const c = $('share-canvas');
-  const x = c.getContext('2d');
-  x.lineCap = 'round'; x.lineJoin = 'round';
-  return x;
-}
-
-function drawStroke(x, s) {
-  if (!s.pts.length) return;
-  x.strokeStyle = s.c; x.lineWidth = s.w;
-  x.beginPath();
-  x.moveTo(s.pts[0][0] * x.canvas.width, s.pts[0][1] * x.canvas.height);
-  for (let i = 1; i < s.pts.length; i++) x.lineTo(s.pts[i][0] * x.canvas.width, s.pts[i][1] * x.canvas.height);
-  if (s.pts.length === 1) x.lineTo(s.pts[0][0] * x.canvas.width + 1, s.pts[0][1] * x.canvas.height + 1);
-  x.stroke();
-}
-
-function redrawStrokes() {
-  const x = ctxOf();
-  x.clearRect(0, 0, x.canvas.width, x.canvas.height);
-  for (const s of allStrokes) drawStroke(x, s);
-  if (liveStroke) drawStroke(x, liveStroke);
-}
-
-function clearAnnotations(broadcast) {
-  allStrokes = []; liveStroke = null;
-  const c = $('share-canvas');
-  if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
-  if (broadcast) sigSend({ t: 'draw', k: 'c' });
-}
-
-function toggleDraw() {
-  if (!sharingLocal) { toast('Start sharing your screen first', 'err'); return; }
-  drawOn = !drawOn;
-  $('btn-draw').classList.toggle('active', drawOn);
-  const c = $('share-canvas');
-  c.classList.remove('hidden');
-  c.classList.toggle('draw-on', drawOn);
-  sizeShareCanvas();
-  if (drawOn) {
-    drawColor = DRAW_COLORS[(DRAW_COLORS.indexOf(drawColor) + 1) % DRAW_COLORS.length];
-    toast('Draw mode ON — pen cycles colors, right-click clears', 'ok');
-  }
-}
-
-function canvasPoint(e) {
-  const c = $('share-canvas');
-  const r = c.getBoundingClientRect();
-  return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
-}
-/* ============ whiteboard (call) — dedicated canvas, independent of share ============ */
-let wbOn = false;
-let wbStrokes = [];
-let wbLive = null;
-let lastWbDot = 0;
-let wbColor = '#5865f2';
-const WB_COLORS = ['#5865f2', '#f23f43', '#23a55a', '#f0b232', '#ffffff'];
-
-function sizeWbCanvas() {
-  const c = $('wb-canvas');
-  const st = $('call-stage');
-  if (!c || !st.clientWidth) return;
-  const w = Math.max(50, st.clientWidth - 48);
-  const h = Math.max(50, st.clientHeight - 48);
-  if (c.width !== w || c.height !== h) {
-    c.width = w; c.height = h;
-    redrawWb();
-  }
-}
-window.addEventListener('resize', () => setTimeout(sizeWbCanvas, 60));
-
-function wctx() {
-  const c = $('wb-canvas');
-  const x = c.getContext('2d');
-  x.lineCap = 'round'; x.lineJoin = 'round';
-  return x;
-}
-
-function drawWbStroke(x, s) {
-  if (!s.pts.length) return;
-  x.strokeStyle = s.c; x.lineWidth = s.w;
-  x.beginPath();
-  x.moveTo(s.pts[0][0] * x.canvas.width, s.pts[0][1] * x.canvas.height);
-  for (let i = 1; i < s.pts.length; i++) x.lineTo(s.pts[i][0] * x.canvas.width, s.pts[i][1] * x.canvas.height);
-  if (s.pts.length === 1) x.lineTo(s.pts[0][0] * x.canvas.width + 1, s.pts[0][1] * x.canvas.height);
-  x.stroke();
-}
-
-function redrawWb() {
-  const x = wctx();
-  x.clearRect(0, 0, x.canvas.width, x.canvas.height);
-  for (const s of wbStrokes) drawWbStroke(x, s);
-  if (wbLive) drawWbStroke(x, wbLive);
-}
-
-function toggleWhiteboard() {
-  if (!call) return;
-  wbOn = !wbOn;
-  $('btn-wb').classList.toggle('on', wbOn);
-  const c = $('wb-canvas');
-  c.classList.toggle('hidden', !wbOn);
-  c.classList.toggle('draw-on', wbOn);
-  if (wbOn) {
-    sizeWbCanvas();
-    sigSend({ t: 'ctrl', k: 'wb-on' });
-    wbColor = WB_COLORS[(WB_COLORS.indexOf(wbColor) + 1) % WB_COLORS.length];
-    toast('Whiteboard ON — pen cycles colors, right-click clears.', 'ok');
-  } else {
-    sigSend({ t: 'ctrl', k: 'wb-off' });
-  }
-}
-
-function clearWhiteboard(broadcast) {
-  wbStrokes = []; wbLive = null;
-  const c = $('wb-canvas');
-  if (c && c.width) c.getContext('2d').clearRect(0, 0, c.width, c.height);
-  if (broadcast) sigSend({ t: 'wb', k: 'c' });
-}
-
-/* ============ quick screenshot ============ */
-async function snipAndSend() {
-  const target = chatOpen || (call && call.peerCode);
-  if (!target) { toast('Open a chat or call first', 'err'); return; }
-  toast('Capturing your screen…');
-  try {
-    const dataUrl = await window.aero.captureScreen();
-    if (!dataUrl) { toast('Capture failed', 'err'); return; }
-    const blob = await (await fetch(dataUrl)).blob();
-    const prevOpen = chatOpen;
-    if (chatOpen !== target) openChat(target);
-    await sendAttachment('image', blob, 'snip-' + Date.now() + '.png');
-  } catch { toast('Screenshot failed', 'err'); }
-}
-
-/* ============ sound pack export / import ============ */
-async function exportSoundPack() {
-  if (!Board.files.length) { toast('No sounds to export', 'err'); return; }
-  const out = { v: 1, app: 'gooncall', files: [] };
-  for (const f of Board.files) {
-    try {
-      const ab = await window.aero.readSound(f.name);
-      if (ab) out.files.push({ name: f.name, b64: u8ToB64(new Uint8Array(ab)) });
-    } catch {}
-  }
-  const code = chatOpen || (call && call.peerCode);
-  if (!code) { toast('Open a chat to send the pack', 'err'); return; }
-  sendAttachment('file', new Blob([JSON.stringify(out)], { type: 'application/goonpack' }), 'board.goonpack');
-}
-
-async function importGoonPack(blob) {
-  try {
-    const data = JSON.parse(await blob.text());
-    if (!data.files || !Array.isArray(data.files)) throw new Error('bad pack');
-    let n = 0;
-    for (const f of data.files.slice(0, 100)) {
-      const u8 = b64ToU8(String(f.b64 || ''));
-      await window.aero.saveSound(String(f.name).slice(0, 80), u8.buffer);
-      n++;
-    }
-    Board.refresh();
-    toast('Imported ' + n + ' sounds from pack', 'ok');
-  } catch { toast('Not a valid .goonpack file', 'err'); }
-}
-
-async function openScreenPicker() {
-  let sources = [];
-  try { sources = await window.aero.getScreens(); } catch { toast('Cannot list screens', 'err'); return; }
-  if (!sources.length) { toast('No screens found', 'err'); return; }
-  const bd = document.createElement('div');
-  bd.id = 'picker-backdrop';
-  const picker = document.createElement('div');
-  picker.id = 'screen-picker';
-  picker.innerHTML =
-    '<div class="modal-head">Share a screen or window <button class="pick-close">&#x2715;</button></div>' +
-    '<div class="picker-grid"></div>' +
-    '<div class="picker-foot"><label class="pick-audio"><input type="checkbox" id="pick-sysaudio" checked /> Include system audio</label>' +
-    '<button class="pick-cancel ghost-btn">Cancel</button></div>';
-  const grid = picker.querySelector('.picker-grid');
-  for (const s of sources) {
-    const item = document.createElement('button');
-    item.className = 'pick-item';
-    item.innerHTML = '<img src="' + s.thumb + '" /><div class="pick-name">' + escapeHtml(s.name) + '</div>';
-    item.onclick = () => {
-      bd.remove();
-      startShare(s.id, picker.querySelector('#pick-sysaudio').checked)
-        .catch(() => toast('Could not start sharing', 'err'));
-    };
-    grid.appendChild(item);
-  }
-  bd.appendChild(picker);
-  document.body.appendChild(bd);
-  picker.querySelector('.pick-close').onclick = () => bd.remove();
-  picker.querySelector('.pick-cancel').onclick = () => bd.remove();
-  bd.addEventListener('click', (e) => { if (e.target === bd) bd.remove(); });
-}
-
-/* ============ views / profile / friends ============ */
-function showView(name) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  $(name).classList.add('active');
-  updateBanner();
-  if (name === 'view-call' && call && call.connectedTs) startTimer();
-}
-
-function updateBanner() {
-  const banner = $('in-call-banner');
-  const active = call && (call.state === 'active' || call.state === 'connecting' || call.state === 'outgoing');
-  const visible = active && $('view-chat').classList.contains('active');
-  banner.classList.toggle('hidden', !visible);
-  if (visible) $('banner-peer').textContent = displayName(call.peerCode);
-}
-
-function renderProfile() {
-  $('prof-name').textContent = identity.name;
-  $('prof-code').textContent = identity.code;
-  const av = $('avatar');
-  av.textContent = initials(identity.name);
-  av.style.background = 'linear-gradient(135deg,hsl(' + identity.hue + ',70%,55%),hsl(' + ((identity.hue + 40) % 360) + ',70%,45%))';
-  renderConnState();
-}
-
-function renderConnState() {
-  const dot = $('rail-dot');
-  if (dot) dot.classList.toggle('online', peerOnline);
-  const up = $('up-dot');
-  if (up) up.classList.toggle('online', peerOnline && !isIdle);
-}
-
-function friendRow(f) {
-  const st = peerState[f.code] || {};
-  const on = isOnline(f.code);
-  const li = document.createElement('li');
-  li.className = 'friend-item';
-  li.dataset.code = f.code;
-  if (f.note) li.dataset.note = f.note;
-  li.title = (f.note ? f.note + '\n' : '') + '#' + f.code;
-
-  const hue = (f.hue != null) ? f.hue : 220;
-  const av = document.createElement('div');
-  av.className = 'friend-avatar ' + (!on ? '' : (st.idle ? 'dot-idle' : 'dot-online'));
-  av.style.background = 'linear-gradient(135deg,hsl(' + hue + ',62%,52%),hsl(' + ((hue + 40) % 360) + ',62%,42%))';
-  av.textContent = initials(f.nick || f.name);
-
-  const meta = document.createElement('div');
-  meta.className = 'friend-meta';
-  const nm = document.createElement('span');
-  nm.className = 'friend-name';
-  nm.textContent = (f.pending ? '[pending] ' : '') + (f.nick || f.name);
-  const sub = document.createElement('span');
-  sub.className = 'friend-sub';
-  sub.textContent = !on
-    ? '#' + f.code
-    : (st.idle ? 'Idle' : '') + (st.status ? ((st.idle ? ' · ' : '') + st.status) : (st.idle ? '' : '# ' + f.code));
-  meta.appendChild(nm); meta.appendChild(sub);
-
-  li.appendChild(av); li.appendChild(meta);
-
-  const badge = document.createElement('span');
-  badge.className = 'friend-badge' + (unread[f.code] ? '' : ' hidden');
-  badge.textContent = unread[f.code] || '';
-  li.appendChild(badge);
-
-  const callBtn = document.createElement('button');
-  callBtn.className = 'friend-action friend-call';
-  callBtn.title = 'Call ' + (f.nick || f.name);
-  callBtn.innerHTML = '&#128222;';
-  callBtn.onclick = (e) => { e.stopPropagation(); startCall(f.code); };
-
-  const delBtn = document.createElement('button');
-  delBtn.className = 'friend-action friend-remove';
-  delBtn.title = 'Remove ' + (f.nick || f.name);
-  delBtn.innerHTML = '&#x2715;';
-  delBtn.onclick = (e) => { e.stopPropagation(); removeFriend(f.code); };
-
-  li.appendChild(callBtn); li.appendChild(delBtn);
-  li.onclick = () => openChat(f.code);
-  return li;
-}
-
-function renderFriends() {
-  const list = $('friends-list');
-  const chip = $('acq-count');
-  if (chip) chip.textContent = friends.length ? String(friends.length) : '';
-  list.innerHTML = '';
-  if (!friends.length) {
-    const empty = document.createElement('li');
-    empty.className = 'friends-empty';
-    empty.innerHTML = 'No acquaintances yet.<br>Hit the <b>+</b> on the rail and paste their code.';
-    list.appendChild(empty);
-    return;
-  }
-  const filter = ($('friend-filter').value || '').trim().toLowerCase();
-  let sorted = [...friends].sort((a, b) => (a.nick || a.name).localeCompare(b.nick || b.name));
-  if (filter) sorted = sorted.filter(f => ((f.nick || f.name) + ' ' + f.code + ' ' + (f.note || '')).toLowerCase().includes(filter));
-  if (!sorted.length) {
-    const none = document.createElement('li');
-    none.className = 'friends-empty';
-    none.textContent = 'No matches.';
-    list.appendChild(none);
-    return;
-  }
-  const mkGroup = (label, arr) => {
-    if (!arr.length) return;
-    const h = document.createElement('div');
-    h.className = 'group-label';
-    h.textContent = label + ' — ' + arr.length;
-    list.appendChild(h);
-    for (const f of arr) list.appendChild(friendRow(f));
-  };
-  mkGroup('Online', sorted.filter(f => isOnline(f.code)));
-  mkGroup('Offline', sorted.filter(f => !isOnline(f.code)));
-}
-
-function removeFriend(code) {
-  const f = friendByCode(code);
-  friends = friends.filter(x => x.code !== code);
-  delete chats[code];
-  delete outbox[code];
-  setUnread(code, 0);
-  saveFriends(); saveChats(); saveOutbox();
-  const c = conns.get(code);
-  if (c) { try { c.close(); } catch {} conns.delete(code); }
-  if (chatOpen === code) { chatOpen = null; showView('view-home'); }
-  renderFriends(); renderRecent();
-  toast('Removed ' + (f ? (f.nick || f.name) : 'friend'));
-}
-
-function addFriendByCode(raw) {
-  const code = String(raw || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (!/^[A-Z0-9]{8}$/.test(code)) { toast('Codes are 8 letters/digits', 'err'); return false; }
-  if (code === identity.code) { toast("That's your own code", 'err'); return false; }
-  const existing = friendByCode(code);
-  if (existing && !existing.pending) { toast('Already on your list', ''); return false; }
-  if (existing) { toast('Request already sent — waiting for them', ''); return false; }
-  upsertFriend(code, 'Friend-' + code.slice(0, 4));
-  friendByCode(code).pending = true;
-  saveFriends(); renderFriends();
-  toast('Request sent — you can chat once they add you back', 'ok');
-  ensureConn(code).catch(() => {});
-  openChat(code);
-  return true;
-}
 
 /* ============ friend requests ============ */
 function renderRequests() {
