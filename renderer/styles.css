@@ -362,6 +362,14 @@ input[type="range"] { accent-color:var(--acc); width:100%; }
 .picker-foot { display:flex; align-items:center; justify-content:space-between; margin-top:14px; }
 .pick-audio { display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--txt-dim); cursor:pointer; }
 
+/* changelog */
+#dlg-changelog[open] { width:min(620px,92vw); }
+.changelog-body { max-height:52vh; overflow-y:auto; padding-right:8px; font-size:13.5px; line-height:1.65; color:var(--txt-dim); user-select:text; }
+.changelog-body h2 { text-align:left; color:var(--acc2); font-size:14.5px; margin:16px 0 4px; }
+.changelog-body h2:first-child { margin-top:0; }
+.changelog-body li { margin-left:18px; margin-bottom:3px; }
+.changelog-body b { color:var(--txt); }
+
 /* switcher */
 #sw-input { width:100%; background:var(--bg0); border:none; border-radius:9px; padding:12px 14px; font-size:14px; outline:none; margin-bottom:10px; }
 #sw-list { list-style:none; display:flex; flex-direction:column; gap:2px; max-height:300px; overflow-y:auto; }

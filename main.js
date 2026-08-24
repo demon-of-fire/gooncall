@@ -763,6 +763,10 @@ ipcMain.handle('shell:external', (_e, url) => {
 });
 
 ipcMain.handle('app:version', () => app.getVersion());
+ipcMain.handle('changelog:get', () => {
+  try { return fs.readFileSync(path.join(__dirname, 'renderer', 'changelog.md'), 'utf8'); }
+  catch { return '# Changelog\n\nNo entries.'; }
+});
 ipcMain.handle('prefs:set', (_e, key, value) => {
   if (!(key in DEFAULT_PREFS)) return prefs;
   prefs[key] = !!value;

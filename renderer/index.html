@@ -267,6 +267,7 @@
         </div>
         <div class="about-row">
           <span id="app-version" class="ver">GoonCall</span>
+          <button id="btn-whatsnew" class="ghost-btn small-btn" type="button">What&#8217;s new</button>
           <button id="btn-open-received" class="ghost-btn small-btn" type="button">Received files</button>
           <button id="btn-open-sounds" class="ghost-btn small-btn" type="button">Sounds folder</button>
           <button id="btn-open-logs" class="ghost-btn small-btn" type="button">Open logs</button>
@@ -315,6 +316,14 @@
     <input id="sw-input" type="text" placeholder="Jump to someone&#8230;" autocomplete="off" spellcheck="false" aria-label="Quick switcher" />
     <ul id="sw-list" role="listbox"></ul>
     <p class="set-hint">Enter opens chat &#183; arrows navigate</p>
+  </dialog>
+
+  <dialog id="dlg-changelog" aria-modal="true" aria-labelledby="cl-title">
+    <h2 id="cl-title">What&#8217;s new in GoonCall</h2>
+    <div id="changelog-body" class="changelog-body"></div>
+    <div class="dialog-actions">
+      <button id="btn-cl-close" class="primary-btn" type="button">Nice</button>
+    </div>
   </dialog>
 
   <audio id="remote-audio" autoplay></audio>

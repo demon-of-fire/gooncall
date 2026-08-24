@@ -3216,6 +3216,53 @@ function clearChatClicked() {
   toast('Chat cleared', 'ok');
 }
 
+/* ============ changelog / what's new ============ */
+let seenVersion = null;
+
+function mdLite(md) {
+  const wrap = document.createElement('div');
+  wrap.className = 'changelog-body';
+  for (const rawLine of md.split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (!line.trim()) continue;
+    if (line.startsWith('## ')) {
+      const h = document.createElement('h2');
+      h.textContent = line.slice(3).trim();
+      wrap.appendChild(h);
+    } else if (/^\s*[-*] /.test(line)) {
+      const li = document.createElement('li');
+      li.innerHTML = escapeHtml(line.replace(/^\s*[-*] /, ''))
+        .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+      wrap.appendChild(li);
+    } else {
+      const p = document.createElement('div');
+      p.innerHTML = escapeHtml(line).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+      wrap.appendChild(p);
+    }
+  }
+  return wrap;
+}
+
+async function showChangelog() {
+  try {
+    const md = await window.aero.getChangelog();
+    const body = $('dlg-changelog').querySelector('.dialog-actions');
+    const content = mdLite(md);
+    $('dlg-changelog').insertBefore(content, body);
+    const dlg = $('dlg-changelog');
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+  } catch { toast('Could not load changelog', 'err'); }
+}
+
+async function maybePromptChangelog() {
+  const v = await window.aero.getVersion();
+  seenVersion = await window.aero.getData('seenVersion');
+  if (seenVersion !== v) {
+    await showChangelog();
+    await window.aero.setData('seenVersion', v);
+  }
+}
+
 /* ============ boot / wiring ============ */
 async function boot() {
   await loadState();
@@ -3502,6 +3549,9 @@ async function boot() {
   $('btn-open-received').onclick = () => window.aero.openReceivedFolder();
   $('btn-open-sounds').onclick = () => window.aero.openSoundsFolder();
   $('btn-open-logs').onclick = () => window.aero.openLogsFolder();
+  $('btn-cl-close').onclick = () => { try { $('dlg-changelog').close(); } catch {} };
+  $('btn-whatsnew').onclick = showChangelog;
+  maybePromptChangelog().catch(() => {});
   let updateReadyVersion = null;
   const markUpdateReady = (version) => {
     updateReadyVersion = version || true;

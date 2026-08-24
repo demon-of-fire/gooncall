@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('aero', {
   openLogsFolder: () => ipcRenderer.invoke('logs:open'),
   openExternal: (url) => ipcRenderer.invoke('shell:external', url),
   getVersion: () => ipcRenderer.invoke('app:version'),
+  getChangelog: () => ipcRenderer.invoke('changelog:get'),
   clipWrite: (text) => ipcRenderer.invoke('clip:write', text),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
