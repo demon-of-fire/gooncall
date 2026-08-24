@@ -1,5 +1,17 @@
 # GoonCall Changelog
 
+## v1.4.0 - Look at you now
+- **Custom avatars** - set a real image in Settings; syncs to your friend automatically
+- **Profile cards** - click someones name/avatar for their card: avatar, status, note, message + call stats
+- **Record PC audio to soundboard** - capture any sound your computer plays as a clip
+- **Shared notes pad** inside calls
+- **Emoji rain** when reacting during share/watch
+- **Per-friend voice FX presets**
+- **Talk stats** (minutes, calls, sounds fired)
+- Phone remote, watch queue + speed sync, whiteboard, snip button, pins, nudge, quote-jump
+
+# GoonCall Changelog
+
 ## v1.3.0 — Discord Mode + Phone Remote
 - **Full UI overhaul** — icon rail, DM-style list, flat messages, floating call dock
 - **Ctrl+K quick switcher** to jump between people

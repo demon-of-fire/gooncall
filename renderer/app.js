@@ -366,7 +366,42 @@ let typingTm = null;
 let typingSendTm = 0;
 
 function helloPayload() {
-  return { t: 'hello', name: identity.name, hue: identity.hue, status: identity.status || '', idle: isIdle };
+  return { t: 'hello', name: identity.name, hue: identity.hue, status: identity.status || '', idle: isIdle, avv: identity.avv || 0 };
+}
+
+/* ---------- avatars ---------- */
+function applyAvatar(el, img, hue, txt) {
+  if (!el) return;
+  if (img) {
+    el.style.backgroundImage = 'url(' + img + ')';
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+    el.textContent = '';
+  } else {
+    el.style.backgroundImage = '';
+    el.textContent = txt;
+  }
+}
+
+function requestAvatar(code) {
+  const conn = conns.get(code);
+  if (conn && conn.open) safeSend(conn, { t: 'avatar-req' });
+}
+
+function downscaleAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = 128; c.height = 128;
+      const x = c.getContext('2d');
+      const s = Math.max(128 / img.width, 128 / img.height);
+      x.drawImage(img, (128 - img.width * s) / 2, (128 - img.height * s) / 2, img.width * s, img.height * s);
+      resolve(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 function broadcastPresence() {
@@ -412,6 +447,8 @@ async function onData(conn, raw) {
   switch (m.t) {
     case 'hello': {
       peerState[code] = { idle: !!m.idle, status: String(m.status || '').slice(0, 80) };
+      const helloF = friendByCode(code);
+      if (m.avv && m.avv !== (helloF && helloF.avv)) requestAvatar(code);
       const f = friendByCode(code);
       if (!f) {
         if (dismissedCodes.includes(code)) break;
@@ -496,6 +533,28 @@ async function onData(conn, raw) {
       break;
     }
 
+    case 'notes': {
+      if (!call || call.peerCode !== code) break;
+      applyRemoteNotes(String(m.text || '').slice(0, 8000));
+      notes[code] = String(m.text || '');
+      window.aero.setData('notes', notes);
+      break;
+    }
+
+    case 'avatar-req': {
+      if (identity.avatar) safeSend(conn, { t: 'avatar', b64: identity.avatar, v: identity.avv || 1 });
+      break;
+}
+    case 'avatar': {
+      const b64 = String(m.b64 || '');
+      const f2 = friendByCode(code);
+      if (f2 && b64.length < 120000 && b64.startsWith('data:image')) {
+        f2.av = b64; f2.avv = Number(m.v) || 1; saveFriends(); renderFriends(); renderProfile();
+        if (chatOpen === code) { openChat(code); }
+        if (call && call.peerCode === code) renderRemoteTile();
+      }
+      break;
+    }
     case 'xfer-start': recvXferStart(conn, m); break;
     case 'xfer-chunk': recvXferChunk(conn, m); break;
     case 'xfer-end': recvXferEnd(conn, m); break;
@@ -947,6 +1006,7 @@ let replyTarget = null;
 let unreadCutId = null;
 let searchQuery = '';
 let drafts = {};
+let notes = {};
 let draftSaveTm = null;
 const urlCache = new Map();   // blob -> object URL, kept alive so audio/img elements survive re-renders
 const regUrl = (blob) => {
@@ -1015,10 +1075,8 @@ function renderChatLog(code, forceScroll) {
 
     const av = document.createElement('div');
     av.className = 'msg-avatar';
-    av.style.background = it.me
-      ? 'linear-gradient(135deg,hsl(' + myHue() + ',62%,52%),hsl(' + ((myHue() + 40) % 360) + ',62%,42%))'
-      : 'linear-gradient(135deg,hsl(' + hueFor(code) + ',62%,52%),hsl(' + ((hueFor(code) + 40) % 360) + ',62%,42%))';
-    av.textContent = initials(it.me ? identity.name : displayName(code));
+    const msgImg = it.me ? identity.avatar : (friendByCode(code) || {}).av;
+    applyAvatar(av, msgImg, it.me ? myHue() : hueFor(code), initials(it.me ? identity.name : displayName(code)));
     row.appendChild(av);
 
     const main = document.createElement('div');
@@ -1641,8 +1699,15 @@ function renderProfile() {
   $('prof-name').textContent = identity.name;
   $('prof-code').textContent = identity.code;
   const av = $('avatar');
-  av.textContent = initials(identity.name);
-  av.style.background = 'linear-gradient(135deg,hsl(' + identity.hue + ',70%,55%),hsl(' + ((identity.hue + 40) % 360) + ',70%,45%))';
+  applyAvatar(av, identity.avatar, identity.hue, initials(identity.name));
+  const rail = $('rail-avatar');
+  if (rail) {
+    rail.style.backgroundImage = identity.avatar ? 'url(' + identity.avatar + ')' : '';
+    rail.style.backgroundSize = 'cover';
+    rail.textContent = identity.avatar ? '' : initials(identity.name);
+  }
+  const home = $('home-code');
+  if (home) home.textContent = identity.code;
   renderConnState();
 }
 
@@ -1665,8 +1730,7 @@ function friendRow(f) {
   const hue = (f.hue != null) ? f.hue : 220;
   const av = document.createElement('div');
   av.className = 'friend-avatar ' + (!on ? '' : (st.idle ? 'dot-idle' : 'dot-online'));
-  av.style.background = 'linear-gradient(135deg,hsl(' + hue + ',62%,52%),hsl(' + ((hue + 40) % 360) + ',62%,42%))';
-  av.textContent = initials(f.nick || f.name);
+  applyAvatar(av, f.av, hue, initials(f.nick || f.name));
 
   const meta = document.createElement('div');
   meta.className = 'friend-meta';
@@ -1814,10 +1878,15 @@ function startCall(code) {
     remoteMicOn = true; remoteSharing = false; sharingLocal = false; deafened = false;
     call.meta = { dir: 'out', result: null };
     call.startedAt = Date.now();
-    renderCallHeader(); renderLocalTile(); renderRemoteTile(); resetCallButtons();
+    renderCallHeader();
+    renderLocalTile();
+    renderRemoteTile();
+    resetCallButtons();
     $('call-status').textContent = 'Ringing…';
     $('call-timer').textContent = '';
     showView('view-call');
+    console.log('SC E');
+    console.log('SC E');
     Sounds.startRing('outgoing');
     call.ringTimeout = setTimeout(() => {
       if (call && call.state === 'outgoing') {
@@ -1862,7 +1931,7 @@ function startCall(code) {
       fire(0);
     });
   }).catch((err) => {
-    console.error('MIC FAIL:', err && err.name, err && err.message);
+    console.error('MIC FAIL:', err && err.name, '-', err && err.message);
     toast('Microphone access denied', 'err');
     teardownCall({ back: false });
   });
@@ -1899,6 +1968,7 @@ function handleInvite(conn, m) {
   };
   remoteMicOn = true; remoteSharing = false; sharingLocal = false; deafened = false;
   $('inc-avatar').textContent = initials(displayName(code));
+  applyAvatar($('inc-avatar'), (friendByCode(code) || {}).av, hueFor(code), initials(displayName(code)));
   $('inc-from').textContent = displayName(code) + ' wants to talk';
   const dlg = $('dlg-incoming');
   if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
@@ -1964,6 +2034,12 @@ function closeIncomingDialog() {
 
 function onCallAccepted() {
   if (!call || call.state !== 'outgoing') return;
+  // per-friend voice FX preset
+  const pf = friendByCode(call.peerCode);
+  if (pf && pf.fxAuto && FX_ORDER.includes(pf.fxAuto)) {
+    settings.fx = pf.fxAuto;
+    saveSettingsData();
+  }
   clearTimeout(call.ringTimeout);
   Sounds.stopRing();
   call.state = 'connecting';
@@ -2217,9 +2293,14 @@ function renderCallHeader() {
 }
 
 function renderLocalTile() {
-  const el = $('av-local-name');
-  if (el) el.textContent = initials(identity.name);
-  const tl = $('tile-local-name');
+  const nm = document.getElementById('av-local-name');
+  if (nm) nm.textContent = identity.avatar ? '' : initials(identity.name);
+  const t = document.getElementById('av-local');
+  if (t) {
+    t.style.backgroundImage = identity.avatar ? 'url(' + identity.avatar + ')' : '';
+    t.style.backgroundSize = 'cover';
+  }
+  const tl = document.getElementById('tile-local-name');
   if (tl) tl.textContent = identity.name;
 }
 
@@ -2227,20 +2308,22 @@ function renderRemoteTile() {
   if (!call) return;
   const f = friendByCode(call.peerCode);
   const hue = (f && f.hue != null) ? f.hue : 220;
-  $('av-remote-name').textContent = initials(displayName(code2name(call.peerCode)));
+  const t = document.getElementById('av-remote');
+  if (t) {
+    t.style.backgroundImage = (f && f.av) ? 'url(' + f.av + ')' : '';
+    t.style.backgroundSize = 'cover';
+  } else if (!hue) {}
+  const nm2 = document.getElementById('av-remote-name');
+  if (nm2) nm2.textContent = (f && f.av) ? '' : initials(displayName(call.peerCode));
   const rn = document.querySelector('#av-remote .tile-name');
   if (rn) rn.textContent = displayName(call.peerCode);
-  $('av-remote').style.background = 'linear-gradient(135deg,hsl(' + hue + ',62%,52%),hsl(' + ((hue + 40) % 360) + ',62%,42%))';
   const chips = [];
   if (!remoteMicOn) chips.push('muted');
   if (remoteDeafened) chips.push('deafened');
-  const sub = $('av-remote-sub');
-  sub.textContent = chips.join(' · ');
-  sub.classList.toggle('visible', chips.length > 0);
+  const sub = document.getElementById('av-remote-sub');
+  if (sub) sub.textContent = chips.join(' \u00b7 ');
+  if (sub) sub.classList.toggle('visible', chips.length > 0);
 }
-
-const code2name = (c) => c;
-
 function toggleDeafen() {
   if (!call) return;
   deafened = !deafened;
@@ -2565,6 +2648,33 @@ function openSettings() {
   buildAccentRow();
   scCapturing = null;
   renderShortcuts();
+  applyAvatar($('set-av-preview'), identity.avatar, identity.hue, initials(identity.name));
+  $('btn-av-change').onclick = async () => {
+    const picked = await window.aero.pickFiles();
+    const f = (picked || [])[0];
+    if (!f) return;
+    try {
+      const ab = await window.aero.readFile(f.path);
+      if (!ab) return;
+      const b64 = await downscaleAvatar(new Blob([ab], { type: 'image/*' }));
+      identity.avatar = b64;
+      identity.avv = Date.now();
+      saveIdentity();
+      broadcastHello();
+      renderProfile();
+      openSettings();
+      toast('Avatar updated', 'ok');
+    } catch { toast('Could not use that image', 'err'); }
+  };
+  $('btn-av-remove').onclick = () => {
+    delete identity.avatar;
+    identity.avv = Date.now();
+    saveIdentity();
+    broadcastHello();
+    renderProfile();
+    openSettings();
+    toast('Avatar removed');
+  };
   window.aero.getPrefs().then((p) => {
     $('set-tray').checked = !!p.closeToTray;
     $('set-hotkey').checked = !!p.hotkeyMute;
@@ -2998,6 +3108,14 @@ function openNickname() {
   $('note-input').value = (f && f.note) || '';
   fillRingSelect($('nick-ring'), true);
   $('nick-ring').value = (f && f.ring) || '';
+  const selF = $('nick-fx');
+  selF.innerHTML = '<option value="default">Default</option>';
+  for (const fx of FX_ORDER) {
+    const o = document.createElement('option');
+    o.value = fx; o.textContent = 'Always ' + (FX_LABELS[fx] || fx);
+    selF.appendChild(o);
+  }
+  selF.value = (f && f.fxAuto && FX_ORDER.includes(f.fxAuto)) ? f.fxAuto : 'default';
   $('nick-title').textContent = (f && f.nick ? f.nick : (f && f.name)) || 'Friend';
   const dlg = $('dlg-nick');
   if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
@@ -3013,6 +3131,8 @@ function saveNickname() {
   if (note) f.note = note; else delete f.note;
   const ring = $('nick-ring').value;
   if (ring && (RINGTONES[ring] || ring.startsWith('snd:'))) f.ring = ring; else delete f.ring;
+  const fxv = $('nick-fx').value;
+  if (fxv && fxv !== 'default' && FX_ORDER.includes(fxv)) f.fxAuto = fxv; else delete f.fxAuto;
   saveFriends();
   renderFriends(); renderRecent();
   $('chat-peer-name').textContent = displayName(chatOpen);
@@ -3085,6 +3205,50 @@ async function maybePromptChangelog() {
     await showChangelog();
     await window.aero.setData('seenVersion', v);
   }
+}
+
+/* ---------- profile card ---------- */
+function showProfile(code) {
+  const me = !code;
+  const f = me ? null : friendByCode(code);
+  const name = me ? identity.name : displayName(code);
+  const hue = me ? myHue() : ((f && f.hue != null) ? f.hue : 220);
+  const img = me ? identity.avatar : (f && f.av);
+  applyAvatar($('pf-avatar'), img, hue, initials(name));
+  $('pf-name').textContent = name;
+  const on = me ? peerOnline : isOnline(code);
+  $('pf-statusline').textContent = me
+    ? (identity.status || (peerOnline ? 'online' : 'connecting'))
+    : (!on ? 'offline' : (peerState[code] && peerState[code].idle ? 'idle' : 'online')) +
+      ((peerState[code] && peerState[code].status) ? ' · ' + peerState[code].status : '');
+  const noteEl = $('pf-note');
+  if (!me && f && f.note) { noteEl.textContent = f.note; noteEl.classList.remove('hidden'); }
+  else noteEl.classList.add('hidden');
+
+  const msgs = (chats[code] || []);
+  let callsN = 0, mins = 0;
+  for (const c of callLog) if (c.code === code) { callsN++; mins += Math.round((c.dur || 0) / 60); }
+  $('pf-stats').innerHTML =
+    '<div class="stat"><b>' + msgs.length + '</b><span>messages</span></div>' +
+    '<div class="stat"><b>' + callsN + '</b><span>calls</span></div>' +
+    '<div class="stat"><b>' + mins + '</b><span>min talked</span></div>';
+  $('pf-code-row').textContent = '#' + code;
+
+  const actions = $('pf-actions');
+  actions.innerHTML = '';
+  const close = document.createElement('button');
+  close.className = 'ghost-btn'; close.textContent = 'Close';
+  close.onclick = () => { try { $('dlg-profile').close(); } catch {} };
+  actions.appendChild(close);
+  if (!me && !call) {
+    const callBtn = document.createElement('button');
+    callBtn.className = 'primary-btn'; callBtn.textContent = 'Call';
+    callBtn.onclick = () => { try { $('dlg-profile').close(); } catch {} startCall(code); };
+    actions.appendChild(callBtn);
+  }
+
+  const dlg = $('dlg-profile');
+  if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
 }
 
 /* ============ boot / wiring ============ */
@@ -3216,6 +3380,16 @@ async function boot() {
     sharingLocal ? stopShare() : openScreenPicker();
   };
   $('btn-hangup').onclick = hangUp;
+  $('btn-notes').onclick = () => {
+    if (!call) { toast('Notes live inside calls', 'err'); return; }
+    const panel = $('notes-panel');
+    if (panel.classList.contains('hidden')) {
+      notesApplyLock = true;
+      $('notes-text').value = notes[call.peerCode] || '';
+      setTimeout(() => { notesApplyLock = false; }, 60);
+    }
+    panel.classList.toggle('hidden');
+  };
 
   $('btn-voice').onclick = toggleVoiceRec;
   $('btn-attach').onclick = async () => {
@@ -3346,7 +3520,8 @@ async function boot() {
     Board.refresh();
   };
   $('btn-board-folder').onclick = () => window.aero.openSoundsFolder();
-  $('btn-board-rec').onclick = toggleBoardRec;
+  $('btn-board-rec').onclick = () => toggleBoardRec('mic');
+  $('btn-board-rec-pc').onclick = () => toggleBoardRec('pc');
   $('btn-board-close').onclick = () => { try { $('dlg-board').close(); } catch {} };
   $('board-vol').addEventListener('input', (e) => { settings.boardVol = Number(e.target.value); saveSettingsData(); });
   $('board-monitor').addEventListener('change', (e) => { settings.boardMonitor = e.target.checked; saveSettingsData(); });
@@ -3572,6 +3747,12 @@ async function boot() {
     applyWatchRate();
     sigSend({ t: 'watch', k: 'rate', r: watchRate });
   });
+
+  /* profile cards */
+  $('chat-peer-av').onclick = () => { if (chatOpen) showProfile(chatOpen); };
+  $('chat-peer-name').onclick = () => { if (chatOpen) showProfile(chatOpen); };
+  $('up-avatar').onclick = () => showProfile(null);
+  $('rail-home').ondblclick = () => showProfile(null);
 
   window.aero.onUpdateStatus((s) => {
     if (!s) return;

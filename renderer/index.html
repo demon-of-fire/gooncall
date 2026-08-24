@@ -206,6 +206,13 @@
     </div>
     <div class="tab-pages">
       <section class="tab-page active" data-page="general">
+        <div class="av-edit-row">
+          <div id="set-av-preview" class="friend-avatar av-preview-lg"></div>
+          <div class="set-checks">
+            <button id="btn-av-change" class="ghost-btn small-btn" type="button">Change avatar</button>
+            <button id="btn-av-remove" class="ghost-btn small-btn" type="button">Remove</button>
+          </div>
+        </div>
         <label class="field"><span>Display name</span>
           <input id="set-name" type="text" maxlength="32" aria-label="Your display name" />
         </label>
@@ -310,6 +317,9 @@
     <label class="field"><span>Note (only you see this)</span>
       <input id="note-input" type="text" maxlength="120" aria-label="Note" />
     </label>
+    <label class="field"><span>Voice FX preset for this person</span>
+      <select id="nick-fx"></select>
+    </label>
     <label class="field"><span>Their ringtone when they call you</span>
       <select id="nick-ring"></select>
     </label>
@@ -325,7 +335,8 @@
     <div class="board-foot">
       <label><input type="checkbox" id="board-monitor" checked /> Hear clips locally</label>
       <label class="bv">Vol <input type="range" id="board-vol" min="0" max="100" step="5" /></label>
-      <button id="btn-board-rec" class="ghost-btn small-btn" type="button">● Record mic</button>
+      <button id="btn-board-rec" class="ghost-btn small-btn" type="button">● Mic</button>
+      <button id="btn-board-rec-pc" class="ghost-btn small-btn" type="button" title="Record whatever your PC is playing">● PC</button>
       <button id="btn-board-export" class="ghost-btn small-btn" type="button">Send pack</button>
       <button id="btn-board-import" class="ghost-btn small-btn" type="button">Import pack</button>
       <button id="btn-stop-all" class="ghost-btn small-btn" type="button">Stop all</button>
@@ -349,6 +360,19 @@
     <input id="sw-input" type="text" placeholder="Jump to someone&#8230;" autocomplete="off" spellcheck="false" aria-label="Quick switcher" />
     <ul id="sw-list" role="listbox"></ul>
     <p class="set-hint">Enter opens chat &#183; arrows navigate</p>
+  </dialog>
+
+  <dialog id="dlg-profile" aria-modal="true" aria-labelledby="pf-name">
+    <div class="pf-banner"></div>
+    <div id="pf-avatar" class="pf-avatar"></div>
+    <h2 id="pf-name" style="margin-top:8px"></h2>
+    <div id="pf-statusline" class="status" style="text-align:center;margin:-6px 0 4px;"></div>
+    <p id="pf-note" class="set-hint hidden"></p>
+    <div id="pf-stats" class="pf-stats"></div>
+    <div id="pf-code-row" class="center mono status"></div>
+    <div class="dialog-actions" id="pf-actions">
+      <button id="btn-pf-close" class="ghost-btn" type="button">Close</button>
+    </div>
   </dialog>
 
   <dialog id="dlg-changelog" aria-modal="true" aria-labelledby="cl-title">

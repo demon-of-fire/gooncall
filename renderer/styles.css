@@ -435,3 +435,15 @@ body.nudged #app { animation:nudgeshake .5s ease; }
 .primary-btn.small-btn { padding:5px 12px; font-size:11.5px; border-radius:8px; }
 .onb-title { text-align:center; }
 .onb-lede { text-align:center; color:var(--txt-dim); font-size:13.5px; line-height:1.7; }
+.av-edit-row { display:flex; gap:14px; align-items:center; }
+
+.av-preview-lg { width:64px !important; height:64px !important; font-size:22px !important; }
+
+/* profile card */
+.pf-banner { height:70px; margin:-22px -22px 0; border-radius:12px 12px 0 0; background:linear-gradient(135deg,var(--acc),var(--acc2)); }
+.pf-avatar { width:88px; height:88px; border-radius:50%; margin:-44px auto 6px; border:5px solid var(--bg1); display:grid; place-items:center; font-size:30px; font-weight:800; color:#fff; background-size:cover; background-position:center; }
+.pf-stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin:10px 0; text-align:center; }
+.pf-stats .stat { background:var(--bg2); border-radius:10px; padding:9px 4px; }
+.pf-stats .stat b { display:block; font-size:16px; color:var(--txt); }
+.pf-stats .stat span { font-size:10px; color:var(--txt-dim); text-transform:uppercase; letter-spacing:.5px; }
+#pf-code-row { margin-top:6px; }
