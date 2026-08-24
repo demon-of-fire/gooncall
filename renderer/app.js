@@ -125,7 +125,8 @@ const RINGTONES = {
 const SHARE_PRESETS = {
   fluid: { w: 1280, h: 720, fps: 30 },
   balanced: { w: 1920, h: 1080, fps: 15 },
-  crisp: { w: 2560, h: 1440, fps: 10 }
+  crisp: { w: 2560, h: 1440, fps: 10 },
+  ultra: { w: 1920, h: 1080, fps: 60 }
 };
 
 const FX_ORDER = ['none', 'robot', 'phone', 'cave', 'deep'];
