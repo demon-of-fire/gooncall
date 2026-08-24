@@ -1,7 +1,7 @@
 {
   "name": "gooncall",
   "productName": "GoonCall",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Private P2P voice calls & screen sharing for Windows. No accounts, no invite codes â€” add friends once, call in one click.",
   "main": "main.js",
   "author": "GoonCall",
