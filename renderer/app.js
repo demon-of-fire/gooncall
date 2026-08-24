@@ -1551,9 +1551,10 @@ function stopAllSounds() {
 
 async function playSoundFile(name, opts = {}) {
   let raw;
-  try { raw = await window.aero.readSound(name); } catch { return; }
-  if (!raw) return;
+  try { raw = await window.aero.readSound(name); } catch { return 'missing'; }
+  if (!raw) return 'missing';
   const ctx = mix ? mix.ctx : new AudioContext();
+  let routed = 'local';
   try {
     if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
     const buf = await ctx.decodeAudioData(raw.slice(0));
@@ -1566,18 +1567,22 @@ async function playSoundFile(name, opts = {}) {
     srcN.connect(g);
     if (mix && !opts.localOnly) {
       g.connect(mix.dest);
+      routed = 'call';
       if (settings.boardMonitor) {
         const m = ctx.createGain(); m.gain.value = .9;
         g.connect(m); m.connect(ctx.destination);
       }
       duckMic(true);
-      srcN.onended = () => duckMic(false);
+      srcN.onended = () => { activeSounds.delete(srcN); duckMic(false); };
     } else {
       g.connect(ctx.destination);
+      routed = opts.localOnly ? 'their-side' : 'local';
     }
     srcN.start();
+    return routed;
   } catch {
     toast('Could not play ' + name, 'err');
+    return 'error';
   }
 }
 
@@ -1648,10 +1653,12 @@ const Board = {
         toast('Sent to ' + displayName(call.peerCode) + "'s speakers 😈");
         return;
       }
-      playSoundFile(f.name);
+      const route = call ? 'into the call' : 'locally (no active call)';
+      playSoundFile(f.name).then(r => { if (r === 'missing') toast('Clip file missing', 'err'); });
+      void route;
     };
-      grid.appendChild(tile);
-    });
+    grid.appendChild(tile);
+  });
   },
   async open() {
     await this.refresh();
