@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('aero', {
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, s) => cb(s)),
+  onRemote: (cb) => ipcRenderer.on('remote', (_e, c) => cb(c)),
 
   xferBegin: (id, name) => ipcRenderer.invoke('xfer:begin', id, name),
   xferAppend: (id, chunk) => ipcRenderer.invoke('xfer:append', id, chunk),

@@ -78,7 +78,7 @@ function writeData(name, value) {
 }
 
 /* ---- app-level prefs owned by the main process ---- */
-const DEFAULT_PREFS = { closeToTray: true, hotkeyMute: false, startWithWindows: false };
+const DEFAULT_PREFS = { closeToTray: true, hotkeyMute: false, startWithWindows: false, phoneRemote: false, phonePin: '' };
 let prefs = Object.assign({}, DEFAULT_PREFS);
 
 function loadPrefs() {
@@ -631,7 +631,7 @@ ipcMain.handle('notify', (_e, title, body, code) => {
   return true;
 });
 
-ipcMain.handle('prefs:get', () => Object.assign({}, prefs));
+ipcMain.handle('prefs:get', () => Object.assign({}, prefs, { lanUrl: 'http://' + lanIP() + ':' + REMOTE_PORT + '/?pin=' + prefs.phonePin }));
 
 ipcMain.handle('sounds:list', () => {
   try {
@@ -782,6 +782,7 @@ ipcMain.handle('prefs:set', (_e, key, value) => {
   savePrefs();
   if (key === 'startWithWindows') applyAutostart();
   if (key === 'hotkeyMute') applyHotkey();
+  if (key === 'phoneRemote') { prefs.phonePin = prefs.phonePin || String(Math.floor(1000 + Math.random() * 9000)); savePrefs(); if (prefs.phoneRemote) startRemoteServer(); else stopRemoteServer(); }
   if (key === 'closeToTray' && tray) {
     try { tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'Open GoonCall', click: showMainWindow },
@@ -798,6 +799,82 @@ ipcMain.handle('prefs:set', (_e, key, value) => {
 // auto-approve mic (voice-only app); screen capture uses desktopCapturer via IPC
 
 const gotLock = (process.env.SMOKE_PEER || process.env.SMOKE_TEST) ? true : app.requestSingleInstanceLock();
+
+/* ---- Phone Remote: tiny LAN control page so your phone drives the soundboard ---- */
+const REMOTE_PORT = 5657;
+let remoteServer = null;
+
+function lanIP() {
+  const ifs = os.networkInterfaces();
+  for (const name of Object.keys(ifs)) {
+    for (const i of ifs[name] || []) {
+      if (i.family === 'IPv4' && !i.internal) return i.address;
+    }
+  }
+  return '127.0.0.1';
+}
+
+function remotePage() {
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>GoonCall Remote</title><style>' +
+    'body{background:#1e1f22;color:#dbdee1;font-family:system-ui;margin:0;padding:18px;text-align:center}' +
+    'h1{font-size:18px}button{width:100%;padding:16px;margin:6px 0;border:none;border-radius:12px;' +
+    'font-size:17px;font-weight:800;background:#5865f2;color:#fff}.red{background:#f23f43}.green{background:#23a55a}' +
+    '.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}</style></head><body>' +
+    '<h1>GoonCall Remote</h1><div id="c"></div>' +
+    '<button class="red" onclick="f(\'stopall\')">STOP ALL SOUND</button>' +
+    '<button onclick="f(\'nudge\')">NUDGE THEM</button>' +
+    '<div class="grid">' +
+    '<button onclick="f(\'mute\')">MIC</button>' +
+    '<button onclick="f(\'deafen\')">DEAFEN</button>' +
+    '<button onclick="f(\'share\')">SHARE</button>' +
+    '<button class="green" onclick="f(\'join\')">ANSWER CALL</button>' +
+    '</div><h1 style="margin-top:22px">Soundboard</h1><div class="grid" id="b"></div>' +
+    '<script>const P=location.search;async function load(){const r=await fetch("/api/sounds"+P);const j=await r.json();' +
+    'const b=document.getElementById("b");(j.sounds||[]).forEach(s=>{const btn=document.createElement("button");' +
+    'btn.textContent=s.replace(/\\.[^.]+$/,"");btn.onclick=()=>f("play",s);b.appendChild(btn);});}load();' +
+    'async function f(a,name){await fetch("/api/cmd"+P,{method:"POST",headers:{"Content-Type":"application/json"},' +
+    'body:JSON.stringify({a,name})});}</scr'+'ipt></body></html>';
+}
+
+function startRemoteServer() {
+  if (remoteServer || process.env.SMOKE_TEST || process.env.SMOKE_PEER) return;
+  const http = require('http');
+  remoteServer = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    if (u.searchParams.get('pin') !== String(prefs.phonePin || '')) {
+      res.writeHead(403); res.end('bad pin'); return;
+    }
+    if (u.pathname === '/' ) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(remotePage());
+    } else if (u.pathname === '/api/sounds') {
+      let names = [];
+      try { names = fs.readdirSync(soundsDir()).filter(n => /\.(mp3|wav|ogg|m4a|flac|webm)$/i.test(n)); } catch {}
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ sounds: names }));
+    } else if (u.pathname === '/api/cmd' && req.method === 'POST') {
+      let body = '';
+      req.on('data', d => { body += d; if (body.length > 4096) req.destroy(); });
+      req.on('end', () => {
+        try {
+          const m = JSON.parse(body);
+          if (win && !win.isDestroyed()) win.webContents.send('remote', { a: m.a, name: m.name });
+          res.writeHead(204); res.end();
+        } catch { res.writeHead(400); res.end(); }
+      });
+    } else { res.writeHead(404); res.end(); }
+  });
+  remoteServer.listen(REMOTE_PORT, () => {
+    logLine('[remote] listening on ' + REMOTE_PORT);
+  });
+  remoteServer.on('error', () => {});
+}
+
+function stopRemoteServer() {
+  if (remoteServer) { try { remoteServer.close(); } catch {} remoteServer = null; }
+}
+
 if (!gotLock) {
   app.quit();
 } else {
@@ -810,6 +887,7 @@ if (!gotLock) {
     session.defaultSession.setPermissionCheckHandler((_wc, permission) =>
       ['media', 'audioCapture'].includes(permission));
     loadPrefs();
+    if (prefs.phoneRemote) startRemoteServer();
     ensureBundledSounds();
     applyAutostart();
     createWindow();
@@ -821,6 +899,7 @@ if (!gotLock) {
   app.on('before-quit', () => {
     forceQuit = true;
     try { globalShortcut.unregisterAll(); } catch {}
+  stopRemoteServer();
     for (const [, w] of xferWrites) { try { w.ws.destroy(); } catch {} }
     xferWrites.clear();
   });

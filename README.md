@@ -176,7 +176,7 @@ Quick boot check: `$env:SMOKE_TEST='1'; npm start` → prints `SMOKE_OK` plus a 
 
 ## Troubleshooting
 
-- **Can't connect at all** — both sides need UDP egress; STUN covers most NATs. Corporate symmetric NAT may need a TURN server added to `RTC_CFG` in `renderer/app.js`.
+- **Can't connect at all** — both sides need UDP egress; STUN covers most NATs. Corporate symmetric NAT may need a TURN server added to `RTC_CFG` in `renderer/ (app.js core + js/ modules)`.
 - **"X is offline" but they're not** — presence can lag ~20 s; the call dialer retries 3× before giving up. Messages don't care: they queue.
 - **Mic doesn't work** — check Windows Settings → Privacy → Microphone (allow desktop apps), then GoonCall Settings → Test mic.
 - **Something's broken weirdly** — Settings → Open logs, send `app.log`.

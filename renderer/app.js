@@ -1251,6 +1251,7 @@ function applyReaction(code, id, emoji, mine) {
 
 function reactTo(code, id, emoji) {
   sendTo(code, { t: 'react', id, emoji });
+  if ((sharingLocal || remoteSharing || watch) && window.Fun) Fun.rain(emoji);
   applyReaction(code, id, emoji, true);
 }
 
@@ -2162,6 +2163,7 @@ function recordCallEntry(callObj, result) {
   });
   if (callLog.length > 100) callLog = callLog.slice(0, 100);
   saveCallLog();
+  if (window.Fun && dur > 0) { try { Fun.statCall(dur); } catch {} }
   renderRecent();
 }
 
@@ -2773,6 +2775,7 @@ const SC_DEFAULTS = {
   watch: 'Ctrl+Shift+W',
   quitApp: 'Ctrl+F1',
   searchChat: 'Ctrl+F',
+  snip: 'Ctrl+Shift+A',
   switcher: 'Ctrl+K',
   settings: 'Ctrl+,'
 };
@@ -2790,7 +2793,8 @@ const SC_ACTIONS = [
   ['quitApp', 'Quit GoonCall'],
   ['searchChat', 'Search chat'],
   ['settings', 'Open settings'],
-  ['switcher', 'Quick switcher']
+  ['switcher', 'Quick switcher'],
+  ['snip', 'Quick screenshot']
 ];
 
 const normKeyToken = (e) => {
@@ -3372,6 +3376,29 @@ async function boot() {
   $('btn-cl-close').onclick = () => { try { $('dlg-changelog').close(); } catch {} };
   $('btn-whatsnew').onclick = showChangelog;
   maybePromptChangelog().catch(() => {});
+
+  /* phone remote settings */
+  const phoneCb = $('set-phone');
+  window.aero.getPrefs().then((p) => {
+    phoneCb.checked = !!p.phoneRemote;
+    if (p.phoneRemote && p.lanUrl) {
+      $('phone-url').textContent = p.lanUrl;
+      $('phone-url').classList.remove('hidden');
+    }
+  });
+  phoneCb.addEventListener('change', async () => {
+    await window.aero.setPref('phoneRemote', phoneCb.checked);
+    const p = await window.aero.getPrefs();
+    if (phoneCb.checked && p.lanUrl) {
+      $('phone-url').textContent = p.lanUrl + '   (same Wi-Fi, open in phone browser)';
+      $('phone-url').classList.remove('hidden');
+      toast('Phone remote ON — open the URL on your phone', 'ok');
+    } else {
+      $('phone-url').textContent = '';
+      $('phone-url').classList.add('hidden');
+    }
+  });
+  window.aero.onRemote(handleRemote);
   let updateReadyVersion = null;
   const markUpdateReady = (version) => {
     updateReadyVersion = version || true;

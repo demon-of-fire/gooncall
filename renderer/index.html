@@ -162,7 +162,12 @@
           <button id="btn-draw" class="dock-btn hidden" aria-label="Draw on share" title="Draw on your share">&#x270F;<i>Draw</i></button>
           <button id="btn-call-chat" class="dock-btn" aria-label="Open chat" title="Chat (Ctrl+Shift+C)">&#x1F4AC;<i>Chat</i></button>
           <button id="btn-hangup" class="dock-btn danger" aria-label="Hang up" title="Hang up (Ctrl+Shift+H)">&#x23F6;<i>Leave</i></button>
+          <button id="btn-notes" class="dock-btn" aria-label="Notes" title="Shared notes">&#x1F5D2;<i>Notes</i></button>
         </div>
+        <div id="notes-panel" class="notes-panel hidden">
+          <textarea id="notes-text" placeholder="Shared scratchpad — both of you can type here…" aria-label="Shared notes"></textarea>
+        </div>
+        <div id="rain-layer"></div>
       </section>
     </main>
   </div>
@@ -271,6 +276,10 @@
           <span class="qh-dash">&rarr;</span>
           <input type="time" id="set-qh-end" value="08:00" aria-label="Quiet until" />
         </div>
+        <div class="set-checks row-wrap">
+          <label><input type="checkbox" id="set-phone" /> Phone remote (LAN)</label>
+          <span id="phone-url" class="status mono"></span>
+        </div>
         <div class="set-divider"></div>
         <div class="set-checks row-wrap">
           <label><input type="checkbox" id="set-tray" /> Close hides to tray</label>
@@ -357,6 +366,7 @@
   <script src="vendor/peerjs.min.js" defer></script>
   <script src="js/board.js" defer></script>
   <script src="js/calltools.js" defer></script>
+  <script src="js/fun.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

@@ -1,5 +1,19 @@
 # GoonCall Changelog
 
+## v1.3.0 — Discord Mode + Phone Remote
+- **Full UI overhaul** — icon rail, DM-style list, flat messages, floating call dock
+- **Ctrl+K quick switcher** to jump between people
+- **Phone remote** — Settings → App → enable, then open the URL on your phone (same Wi-Fi) to fire sounds, mute, nudge and answer calls from bed
+- **Shared notes pad** in every call
+- **Emoji rain** when you react during share/watch
+- **Per-friend voice FX** — auto-robot whoever you want, set in their rename dialog
+- **Talk stats** — total minutes, calls, sounds fired (Settings → App)
+- **Quick screenshot** shortcut (Ctrl+Shift+A default)
+- Under the hood: app split into clean modules
+
+## v1.2.x
+- Whiteboard, watch queue + speed sync, snip button, pins, nudge, quote-jump, sound packs, custom file ringtones, free TURN relay, onboarding
+
 ## v1.2.0 — The Two-Person Empire
 - **Whiteboard** in calls — draw together on a shared canvas (pen cycles colors)
 - **Watch queue** — line up videos, they autoplay next

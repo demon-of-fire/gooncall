@@ -423,3 +423,12 @@ body.nudged #app { animation:nudgeshake .5s ease; }
 #wb-canvas.hidden { display:none !important; }
 .onb-step { display:flex; gap:14px; align-items:flex-start; margin-bottom:16px; }
 .onb-num { width:30px; height:30px; border-radius:50%; background:var(--acc); color:#fff; font-weight:800; display:grid; place-items:center; flex-shrink:0; font-size:14px; }
+/* notes pad */
+.notes-panel { position:absolute; right:20px; top:70px; bottom:96px; width:min(320px,38%); z-index:6; background:var(--bg1); border-radius:14px; padding:10px; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+.notes-panel.hidden { display:none !important; }
+#notes-text { width:100%; height:100%; background:var(--bg2); border:none; border-radius:10px; color:var(--txt); font-size:13.5px; line-height:1.5; padding:10px; resize:none; outline:none; font-family:inherit; }
+
+/* emoji rain */
+#rain-layer { position:absolute; inset:0; z-index:8; pointer-events:none; overflow:hidden; }
+.rain-drop { position:absolute; top:-40px; animation:rainfall 2.2s linear forwards; }
+@keyframes rainfall { to { transform:translateY(110vh) rotate(240deg); opacity:.7; } }
