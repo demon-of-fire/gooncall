@@ -3,49 +3,60 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' wss: https:; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob: https: mediastream:; frame-src https://www.youtube.com https://www.youtube-nocookie.com;" />
-  <title>GoonCall — free global voice calls</title>
+  <title>GoonCall</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="vendor/peerjs.min.js" defer></script>
-</head></head>
+</head>
 <body>
-  <div id="titlebar" role="banner">
+  <div id="titlebar">
     <div class="tb-brand"><span class="logo-dot"></span>GoonCall</div>
+    <div id="tb-hint">Ctrl+Enter answers · Esc declines · Ctrl+K switcher</div>
   </div>
 
   <div id="app">
-    <aside id="sidebar" aria-label="Primary navigation">
-      <section id="profile">
-        <div id="avatar">?</div>
-        <div class="prof-meta">
-          <div id="prof-name">You</div>
-          <div id="prof-code" class="code"></div>
-        </div>
-        <button id="btn-copy-code" class="icon-btn" aria-label="Copy your code">&#x1F4CB;</button>
-      </section>
+    <nav id="rail" aria-label="Primary">
+      <button id="rail-home" class="rail-item active" aria-label="Home" title="Home">
+        <span id="rail-avatar">?</span><span id="rail-dot" class="rail-dot"></span>
+      </button>
+      <div class="rail-sep"></div>
+      <button id="btn-add-friend" class="rail-item rail-add" aria-label="Add acquaintance" title="Add acquaintance">&#x2B;</button>
+      <div class="rail-flex"></div>
+      <button id="btn-watch-none" class="hidden" tabindex="-1" aria-hidden="true"></button>
+      <button id="btn-settings" class="rail-item rail-gear" aria-label="Settings" title="Settings">&#x2699;</button>
+    </nav>
 
-      <div class="side-actions">
-        <button id="btn-add-friend" class="primary-btn">+ Add acquaintance</button>
-        <button id="btn-settings" class="icon-btn" aria-label="Settings">&#x2699;</button>
-      </div>
+    <aside id="sidebar" aria-label="Acquaintances">
+      <header id="dm-header">
+        <span>Direct calls</span>
+        <input id="friend-filter" type="text" placeholder="Filter&#8230;" autocomplete="off" spellcheck="false" aria-label="Filter acquaintances" />
+      </header>
 
-      <section id="requests-wrap" class="hidden" aria-label="Friend requests">
+      <section id="requests-wrap" class="hidden" aria-label="Requests">
         <h2 class="side-label">Requests <span id="requests-badge" class="req-badge hidden"></span></h2>
         <ul id="requests-list" role="list"></ul>
       </section>
 
-      <nav aria-label="Acquaintances">
-        <h2 class="side-label">Acquaintances <span id="acq-count" class="count-chip"></span></h2>
+      <nav id="dm-scroll" aria-label="Acquaintances list">
         <ul id="friends-list" role="list"></ul>
       </nav>
 
-      <footer id="conn-state" aria-live="polite">Connecting&#8230;</footer>
+      <footer id="user-panel">
+        <div id="up-avatar" title=""><span id="avatar">?</span><span id="up-dot" class="up-dot offline"></span></div>
+        <div class="up-meta">
+          <div id="prof-name">You</div>
+          <div id="prof-code" class="code">#····</div>
+        </div>
+        <button id="btn-copy-code" class="icon-btn" aria-label="Copy your code" title="Copy your code">&#x1F4CB;</button>
+        <button id="btn-up-mute" class="up-btn on" aria-label="Mute" title="Mute (in call)">🎙</button>
+        <button id="btn-settings2" class="up-btn" aria-label="Settings" title="Settings">&#x2699;</button>
+      </footer>
     </aside>
 
     <main id="main">
       <section id="view-home" class="view active">
-        <header><h1>Welcome to AeroCall</h1></header>
-        <p class="sub">Voice calls &amp; screen sharing, straight to your friends. No codes to swap every call.</p>
-        <div class="center hint">Click <b>+ Add acquaintance</b> and paste their code once &mdash; then call them any time with one click.</div>
+        <header><h1>Welcome to GoonCall</h1></header>
+        <p class="sub">Voice calls, screen sharing, watch parties &mdash; straight to your people. No Nitro.</p>
+        <div class="center hint">Click <b>&#x2B;</b> on the rail, paste their code once &mdash; call any time with one click.<br>Your code: <b id="home-code" class="mono"></b> <button id="btn-copy-code2" class="ghost-btn small-btn" type="button">Copy</button></div>
         <section id="recent-wrap" class="hidden" aria-label="Recent calls">
           <h2 class="side-label center-label">Recent calls</h2>
           <ul id="recent-list" role="list"></ul>
@@ -54,19 +65,19 @@
 
       <section id="view-chat" class="view">
         <header id="chat-header">
-          <button id="btn-chat-back" class="icon-btn" aria-label="Back to friends">&#x2190;</button>
+          <button id="btn-chat-back" class="icon-btn" aria-label="Back" title="Back">&#x2190;</button>
+          <div id="chat-peer-av" class="dm-av"></div>
           <div id="chat-peer-name" class="name"></div>
           <div id="chat-peer-status" class="status"></div>
           <span id="chat-typing" class="typing hidden">typing&#8230;</span>
-          <button id="btn-chat-nick" class="icon-btn chat-tool-first" aria-label="Rename friend" title="Rename">&#x270E;</button>
-          <button id="btn-chat-search" class="icon-btn" aria-label="Search messages" title="Search">&#x1F50D;</button>
+          <button id="btn-chat-search" class="icon-btn chat-tool-first" aria-label="Search messages" title="Search (Ctrl+F)">&#x1F50D;</button>
+          <button id="btn-chat-nick" class="icon-btn" aria-label="Rename friend" title="Rename / note / ringtone">&#x270E;</button>
           <button id="btn-chat-clear" class="icon-btn" aria-label="Clear messages" title="Clear messages">&#x1F5D1;</button>
           <button id="btn-chat-call" class="ctrl on chat-call-btn" aria-label="Start voice call" title="Call">&#x1F50A;<span>Call</span></button>
         </header>
         <div id="in-call-banner" class="banner hidden" aria-live="polite">
           In call with <span id="banner-peer"></span> <button id="btn-return-call">Return to call</button>
         </div>
-        <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
         <div id="reply-bar" class="reply-bar hidden">
           <span class="rb-label">Replying to <b id="rb-name"></b>: <span id="rb-text"></span></span>
           <button id="btn-reply-cancel" class="icon-btn" aria-label="Cancel reply">&#x2715;</button>
@@ -101,26 +112,17 @@
             <span id="call-timer" class="timer" aria-hidden="true"></span>
           </div>
           <div class="h-right">
-            <button id="btn-stats" class="quality-pill" title="Connection stats">&#x2014;</button>
-            <button id="btn-mute" class="ctrl on" aria-label="Mute microphone (M)" aria-pressed="false" title="Mute (M)"><span>Mic</span></button>
-            <button id="btn-deafen" class="ctrl on" aria-label="Deafen (D)" aria-pressed="false" title="Deafen (D)">&#x1F507;<span>Deaf</span></button>
-            <button id="btn-fx" class="ctrl" aria-label="Cycle voice effect (Ctrl+Shift+F)" title="Voice effect (Ctrl+Shift+F)">&#x1F39B;<span id="fx-label">Clean</span></button>
-            <button id="btn-board" class="ctrl" aria-label="Soundboard (Ctrl+Shift+B)" title="Soundboard (Ctrl+Shift+B)">&#x1F3B5;<span>Board</span></button>
-            <button id="btn-watch" class="ctrl" aria-label="Watch together" title="Watch together">&#x1F4FA;<span>Watch</span></button>
-            <button id="btn-draw" class="ctrl hidden" aria-label="Draw on share" title="Draw on your share">&#x270F;<span>Draw</span></button>
-            <button id="btn-share" class="ctrl" aria-label="Share your screen (Ctrl+Shift+S)" aria-pressed="false" title="Share screen (Ctrl+Shift+S)">&#x1F5FA;<span>Share</span></button>
-            <button id="btn-call-chat" class="ctrl" aria-label="Open chat (Ctrl+Shift+C)" title="Chat (Ctrl+Shift+C)">&#x1F4AC;<span>Chat</span></button>
-            <button id="btn-hangup" class="ctrl danger" aria-label="Hang up (Ctrl+Shift+H)" title="Hang up (Ctrl+Shift+H)">&#x23F6;<span>Leave</span></button>
+            <button id="btn-stats" class="quality-pill" title="Connection quality">&#x2014;</button>
           </div>
         </header>
         <div id="call-stage" class="stage">
           <div class="stage-audio">
             <div class="audio-tile">
-              <div id="av-local" class="audio local"><span id="av-local-name" class="av-initials"></span></div>
-              <div class="av-caption">You</div>
+              <div id="av-local" class="tile"><span id="av-local-name" class="av-initials"></span><span class="tile-name" id="tile-local-name">You</span></div>
+              <div class="av-caption"><span id="tile-local-sub" class="muted-chip"></span></div>
             </div>
             <div class="audio-tile">
-              <div id="av-remote" class="audio remote" tabindex="0"><span id="av-remote-name" class="av-initials"></span></div>
+              <div id="av-remote" class="tile remote" tabindex="0"><span id="av-remote-name" class="av-initials"></span><span class="tile-name" id="tile-remote-name"></span></div>
               <div class="av-caption"><span id="av-remote-sub" class="muted-chip"></span></div>
             </div>
           </div>
@@ -128,15 +130,26 @@
           <canvas id="share-canvas" class="hidden"></canvas>
           <div id="watch-mount" class="hidden"></div>
           <div id="watch-bar" class="watch-bar hidden">
-            <input id="watch-url" type="text" placeholder="Paste a YouTube or direct video link…" autocomplete="off" spellcheck="false" />
+            <input id="watch-url" type="text" placeholder="Paste a YouTube or direct video link&#8230;" autocomplete="off" spellcheck="false" />
             <button id="btn-watch-go" class="primary-btn" type="button">Watch</button>
             <button id="btn-watch-close" class="ghost-btn small-btn" type="button">Close</button>
           </div>
           <div id="watch-ctl" class="watch-ctl hidden">
-            <button id="w-play" class="ghost-btn small-btn" type="button">Play</button>
+            <button id="w-play" class="dock-btn small" type="button">&#x25B6;/&#x23F8;</button>
             <span id="w-state" class="status">synced</span>
           </div>
           <div id="share-label" class="share-label hidden"></div>
+        </div>
+        <div id="call-dock">
+          <button id="btn-mute" class="dock-btn on" aria-label="Mute microphone" aria-pressed="false" title="Mute (M)">&#x1F3A4;<i>Mic</i></button>
+          <button id="btn-deafen" class="dock-btn on" aria-label="Deafen" aria-pressed="false" title="Deafen (D)">&#x1F507;<i>Deaf</i></button>
+          <button id="btn-fx" class="dock-btn" aria-label="Cycle voice effect" title="Voice effect (Ctrl+Shift+F)">&#x1F39B;<i id="fx-label">Clean</i></button>
+          <button id="btn-board" class="dock-btn" aria-label="Soundboard" title="Soundboard (Ctrl+Shift+B)">&#x1F3B5;<i>Board</i></button>
+          <button id="btn-watch" class="dock-btn" aria-label="Watch together" title="Watch together">&#x1F4FA;<i>Watch</i></button>
+          <button id="btn-share" class="dock-btn" aria-label="Share your screen" aria-pressed="false" title="Share screen (Ctrl+Shift+S)">&#x1F5FA;<i>Share</i></button>
+          <button id="btn-draw" class="dock-btn hidden" aria-label="Draw on share" title="Draw on your share">&#x270F;<i>Draw</i></button>
+          <button id="btn-call-chat" class="dock-btn" aria-label="Open chat" title="Chat (Ctrl+Shift+C)">&#x1F4AC;<i>Chat</i></button>
+          <button id="btn-hangup" class="dock-btn danger" aria-label="Hang up" title="Hang up (Ctrl+Shift+H)">&#x23F6;<i>Leave</i></button>
         </div>
       </section>
     </main>
@@ -220,12 +233,12 @@
           <select id="set-fx"></select>
         </label>
         <label class="field"><span>Screen share quality</span>
-        <select id="set-sharepreset">
-          <option value="fluid">Fluid &mdash; 720p @ 30fps</option>
-          <option value="balanced">Balanced &mdash; 1080p @ 15fps</option>
-          <option value="crisp">Crisp &mdash; 1440p @ 10fps</option>
-          <option value="ultra">Ultra &mdash; 1080p @ 60fps (Nitro who? )</option>
-        </select>
+          <select id="set-sharepreset">
+            <option value="fluid">Fluid &mdash; 720p @ 30fps</option>
+            <option value="balanced">Balanced &mdash; 1080p @ 15fps</option>
+            <option value="crisp">Crisp &mdash; 1440p @ 10fps</option>
+            <option value="ultra">Ultra &mdash; 1080p @ 60fps</option>
+          </select>
         </label>
         <p class="set-hint">Effects are also swappable mid-call with their shortcut. Mic processing changes apply on your next call.</p>
       </section>
@@ -297,10 +310,18 @@
     </div>
   </dialog>
 
+  <dialog id="dlg-switcher" aria-modal="true" aria-labelledby="sw-title">
+    <h2 id="sw-title" class="sr-only">Quick switcher</h2>
+    <input id="sw-input" type="text" placeholder="Jump to someone&#8230;" autocomplete="off" spellcheck="false" aria-label="Quick switcher" />
+    <ul id="sw-list" role="listbox"></ul>
+    <p class="set-hint">Enter opens chat &#183; arrows navigate</p>
+  </dialog>
+
   <audio id="remote-audio" autoplay></audio>
   <div id="toasts" role="status" aria-live="polite"></div>
   <div id="toasts-alert" role="alert" aria-live="assertive"></div>
 
+  <script src="vendor/peerjs.min.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

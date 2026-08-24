@@ -208,7 +208,7 @@ function createWindow() {
         setTimeout(async () => {
           try {
             const probe = await win.webContents.executeJavaScript(
-              '({ conn: document.getElementById("conn-state").textContent, code: identity.code, friends: friends.length })', true);
+              '({ online: peerOnline, code: identity.code, friends: friends.length })', true);
             console.log('SMOKE: probe', JSON.stringify(probe));
           } catch (e) { console.log('SMOKE: probe failed', String(e)); }
           bail(100);
