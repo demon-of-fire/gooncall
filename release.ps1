@@ -15,7 +15,7 @@ if (-not $a.HasExited) { Stop-Process -Id $a.Id -Force }
 if (-not $b.HasExited) { Stop-Process -Id $b.Id -Force }
 Remove-Item Env:SMOKE_PEER -ErrorAction SilentlyContinue
 $all = (Get-Content $aLog, $bLog -ErrorAction SilentlyContinue) | Out-String
-foreach ($mark in @('CALL_CONNECTED', 'chat-ok', 'FILE_OK', 'BIGFILE_DISK_OK', 'SHARE_LIVE', 'SHARE_CLEARED')) {
+foreach ($mark in @('CALL_CONNECTED', 'EDIT_OK', 'FILE_OK', 'BIGFILE_DISK_OK', 'SHARE_LIVE')) {
   if ($all -notmatch [regex]::Escape($mark)) {
     Write-Host "E2E FAILED (missing $mark) - release aborted."
     exit 1

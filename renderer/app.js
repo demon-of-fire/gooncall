@@ -1111,6 +1111,12 @@ function renderChatLog(code, forceScroll) {
     const cont = prev && prev.me === it.me && Math.abs((it.ts || 0) - (prev.ts || 0)) < 300000;
     const row = document.createElement('div');
     row.className = 'msg' + (it.me ? ' me' : ' them') + (cont ? ' cont' : '');
+    row.tabIndex = 0;
+    row.setAttribute('role', 'article');
+    row.setAttribute('aria-label',
+      (it.me ? 'Your message' : 'Message from ' + displayName(code)) + ', ' +
+      d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
+      (it.deleted ? ', deleted' : '') + '.');
     if (it.id) row.dataset.mid = it.id;
 
     const av = document.createElement('div');
@@ -1277,9 +1283,11 @@ function appendMsgContent(main, code, it, d, showMeta) {
     const rr = document.createElement('div');
     rr.className = 'reactions';
     for (const k of rKeys) {
-      const chip = document.createElement('span');
+      const chip = document.createElement('button');
+      chip.type = 'button';
       chip.className = 'react-chip' + (it.myReacts && it.myReacts[k] ? ' mine' : '');
       chip.textContent = k + (it.reactions[k] > 1 ? ' ' + it.reactions[k] : '');
+      chip.setAttribute('aria-label', k + ', ' + it.reactions[k] + ' times. React again');
       chip.onclick = () => reactTo(code, it.id, k);
       rr.appendChild(chip);
     }
@@ -1291,15 +1299,18 @@ function appendMsgContent(main, code, it, d, showMeta) {
     bar.className = 'msg-actions';
     for (const em of ['\uD83D\uDE02', '\u2764\uFE0F', '\uD83D\uDC4D', '\uD83D\uDE2E']) {
       const b = document.createElement('button');
+      b.type = 'button';
       b.className = 'ma-btn';
+      b.setAttribute('aria-label', 'React with ' + em);
       b.textContent = em;
       b.onclick = () => reactTo(code, it.id, em);
       bar.appendChild(b);
     }
     const rp = document.createElement('button');
+    rp.type = 'button';
     rp.className = 'ma-btn';
+    rp.setAttribute('aria-label', 'Reply to this message');
     rp.innerHTML = '&#x21A9;';
-    rp.title = 'Reply';
     rp.onclick = () => startReply(code, it);
     bar.appendChild(rp);
     main.appendChild(bar);
@@ -1312,7 +1323,7 @@ function appendRichText(parent, text) {
     .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/, '$1<i>$2</i>')
     .replace(/`([^`\n]+)`/g, '<code>$1</code>');
   h = h.replace(/(https?:\/\/[^\s<"]+)/g, function (m) {
-    return '<span class="msg-link" data-url="' + m + '" title="' + m + '">' + m + '</span>';
+    return '<span class="msg-link" role="link" tabindex="0" data-url="' + m + '" title="' + m + '\nOpens in your browser">' + m + '</span>';
   });
   span.innerHTML = h;
   parent.appendChild(span);
@@ -1804,7 +1815,13 @@ function friendRow(f) {
   delBtn.onclick = (e) => { e.stopPropagation(); removeFriend(f.code); };
 
   li.appendChild(callBtn); li.appendChild(delBtn);
+  li.tabIndex = 0;
+  li.setAttribute('role', 'button');
+  li.setAttribute('aria-label', (f.nick || f.name) + (on ? ', online. Press Enter to chat' : ', offline'));
   li.onclick = () => openChat(f.code);
+  li.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChat(f.code); }
+  };
   return li;
 }
 
@@ -3264,20 +3281,28 @@ let seenVersion = null;
 function mdLite(md) {
   const wrap = document.createElement('div');
   wrap.className = 'changelog-body';
+  wrap.tabIndex = 0;
+  wrap.setAttribute('role', 'document');
+  wrap.setAttribute('aria-label', 'Release notes');
+  let ul = null;
+  const closeList = () => { ul = null; };
   for (const rawLine of md.split(/\r?\n/)) {
     const line = rawLine.trimEnd();
     if (!line.trim()) continue;
     if (line.startsWith('## ')) {
+      closeList();
       const h = document.createElement('h2');
       h.textContent = line.slice(3).trim();
       wrap.appendChild(h);
     } else if (/^\s*[-*] /.test(line)) {
+      if (!ul) { ul = document.createElement('ul'); wrap.appendChild(ul); }
       const li = document.createElement('li');
       li.innerHTML = escapeHtml(line.replace(/^\s*[-*] /, ''))
         .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
-      wrap.appendChild(li);
+      ul.appendChild(li);
     } else {
-      const p = document.createElement('div');
+      closeList();
+      const p = document.createElement('p');
       p.innerHTML = escapeHtml(line).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
       wrap.appendChild(p);
     }
@@ -3290,7 +3315,11 @@ async function showChangelog() {
     const md = await window.aero.getChangelog();
     const body = $('dlg-changelog').querySelector('.dialog-actions');
     const content = mdLite(md);
-    $('dlg-changelog').insertBefore(content, body);
+    content.setAttribute('role', 'document');
+  content.setAttribute('role', 'document');
+  $('dlg-changelog').insertBefore(content, body);
+  setTimeout(() => { try { content.focus(); } catch (e) {} }, 80);
+  setTimeout(() => { try { content.focus(); } catch (e) {} }, 80);
     const dlg = $('dlg-changelog');
     if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
   } catch { toast('Could not load changelog', 'err'); }
@@ -3594,6 +3623,11 @@ async function boot() {
 
   /* links open outside */
   document.addEventListener('click', (e) => {
+    const link = e.target.closest('.msg-link');
+    if (link && link.dataset.url) window.aero.openExternal(link.dataset.url);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
     const link = e.target.closest('.msg-link');
     if (link && link.dataset.url) window.aero.openExternal(link.dataset.url);
   });
