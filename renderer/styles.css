@@ -282,8 +282,8 @@ body.amoled { --bg0:#000; --bg1:#050507; --bg2:#0a0b10; --bg3:#101218; }
 
 /* message hover actions */
 .msg { position:relative; }
-.msg-actions { position:absolute; top:-14px; right:8px; display:none; gap:2px; background:var(--bg3); border:1px solid var(--line); border-radius:9px; padding:2px; z-index:3; box-shadow:0 6px 18px rgba(0,0,0,.4); }
-.msg:hover .msg-actions { display:flex; }
+.msg-actions { position:absolute; top:-13px; right:8px; display:flex; gap:2px; background:var(--bg3); border:1px solid var(--line); border-radius:9px; padding:2px; z-index:3; box-shadow:0 6px 18px rgba(0,0,0,.4); opacity:0; pointer-events:none; transform:translateY(3px); transition:opacity .12s ease, transform .12s ease; }
+.msg:hover .msg-actions { opacity:1; pointer-events:auto; transform:translateY(0); }
 .ma-btn { width:26px; height:24px; border-radius:6px; font-size:13px; display:grid; place-items:center; color:var(--txt-dim); }
 .ma-btn:hover { background:rgba(255,255,255,.09); color:var(--txt); }
 .reactions { display:flex; gap:4px; margin-top:4px; flex-wrap:wrap; }

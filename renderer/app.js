@@ -341,7 +341,7 @@ function wireConn(conn) {
 const isOnline = (code) => !!presence.get(code);
 
 function safeSend(conn, msg) {
-  try { if (conn && conn.open) conn.send(msg); } catch {}
+  try { if (conn && conn.open) conn.send(msg); } catch (err) { console.error('SEND FAIL:', err && err.message); }
 }
 
 let isIdle = false;
@@ -1299,27 +1299,6 @@ function buildFx(ctx, name) {
   return { input, output: tail, nodes };
 }
 
-function startGateLoop(tapNode) {
-  if (gateRAF) cancelAnimationFrame(gateRAF);
-  if (!mix) return;
-  const ctx = mix.ctx;
-  const an = ctx.createAnalyser(); an.fftSize = 1024;
-  tapNode.connect(an);
-  const buf = new Uint8Array(an.fftSize);
-  const loop = () => {
-    an.getByteTimeDomainData(buf);
-    let sum = 0;
-    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-    const rms = Math.sqrt(sum / buf.length);
-    const g = Number(settings.gate) || 0;
-    const thresh = g <= 0 ? 0 : 0.002 + (g / 100) * 0.05;
-    const target = (!g || rms >= thresh) ? 1 : 0;
-    mix.gateGain.gain.setTargetAtTime(target, ctx.currentTime, 0.02);
-    gateRAF = requestAnimationFrame(loop);
-  };
-  loop();
-}
-
 function initMixBus(micStream) {
   destroyMixBus();
   try {
@@ -1338,12 +1317,11 @@ function initMixBus(micStream) {
       ctx, src, fx, gateGain, micGain, dest,
       boardGain: (() => { const b = ctx.createGain(); b.gain.value = 1; b.connect(dest); return b; })()
     };
-    startGateLoop(fx.output);
-
-    // push a little more quality into the uplink
     for (const t of micStream.getAudioTracks()) { try { t.contentHint = 'speech'; } catch {} }
+    startGateLoop(fx.output);
     return true;
-  } catch {
+  } catch (err) {
+    console.error('MIX BUS FAIL:', err && err.message);
     mix = null;
     return false;
   }
@@ -1373,12 +1351,13 @@ function setFx(name) {
     const fx = buildFx(mix.ctx, name);
     mix.fx = fx;
     mix.src.connect(fx.input);
-    fx.output.connect(mix.gateGain);   // gateGain -> micGain edge stays intact
+    fx.output.connect(mix.gateGain);
     startGateLoop(fx.output);
-    toast('Voice effect: ' + (FX_LABELS[name] || 'Clean'), name === 'none' ? '' : 'ok');
   }
 }
 
+/* Adaptive gate: learns ambient noise floor, opens on dynamic ratio with hysteresis.
+   settings.gate acts as aggressiveness 0-100 -> ratio 1.5x .. 4.5x the floor. */
 function startGateLoop(tapNode) {
   if (gateRAF) cancelAnimationFrame(gateRAF);
   if (!mix) return;
@@ -1386,15 +1365,37 @@ function startGateLoop(tapNode) {
   const an = ctx.createAnalyser(); an.fftSize = 1024;
   tapNode.connect(an);
   const buf = new Uint8Array(an.fftSize);
+  let noiseFloor = 0.004;
+  let isOpen = false;
+
   const loop = () => {
     an.getByteTimeDomainData(buf);
     let sum = 0;
     for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
     const rms = Math.sqrt(sum / buf.length);
     const g = Number(settings.gate) || 0;
-    const thresh = g <= 0 ? 0 : 0.002 + (g / 100) * 0.05;
-    const target = (!g || rms >= thresh) ? 1 : 0;
-    mix.gateGain.gain.setTargetAtTime(target, ctx.currentTime, 0.02);
+
+    if (g <= 0) {
+      mix.gateGain.gain.setTargetAtTime(1, ctx.currentTime, 0.02);
+      noiseFloor = noiseFloor * 0.995 + rms * 0.005;
+      gateRAF = requestAnimationFrame(loop);
+      return;
+    }
+
+    const ratio = 1.5 + (g / 100) * 3;
+    // track floor only while quiet-ish, so speech never raises it
+    if (!isOpen && rms < noiseFloor * 1.35) {
+      noiseFloor = Math.max(0.0008, noiseFloor * 0.97 + rms * 0.03);
+    }
+    noiseFloor = Math.min(noiseFloor, 0.05);
+
+    const openThresh = noiseFloor * ratio;
+    const closeThresh = noiseFloor * Math.max(1.15, ratio - 1);
+
+    if (!isOpen && rms > openThresh) isOpen = true;
+    else if (isOpen && rms < closeThresh) isOpen = false;
+
+    mix.gateGain.gain.setTargetAtTime(isOpen ? 1 : 0, ctx.currentTime, isOpen ? 0.008 : 0.22);
     gateRAF = requestAnimationFrame(loop);
   };
   loop();
@@ -1548,14 +1549,29 @@ function startCall(code) {
     };
     dial().then((conn) => {
       if (!call || call.peerCode !== code || call.state === 'idle') return;
-      if (!conn) {
+      if (!conn || !conn.open) {
         Sounds.stopRing();
         clearTimeout(call.ringTimeout);
         toast(displayName(code) + ' is offline', 'err');
         teardownCall({ back: true, result: 'failed' });
         return;
       }
-      safeSend(conn, { t: 'call-invite', name: identity.name });
+      // send on the exact verified-open conn the dialer returned (immune to map swaps)
+      const fire = (attempt) => {
+        if (!call || call.peerCode !== code) return;
+        if (conn.open) {
+          safeSend(conn, { t: 'call-invite', name: identity.name });
+          return;
+        }
+        if (attempt < 3) setTimeout(() => fire(attempt + 1), 800);
+        else {
+          Sounds.stopRing();
+          clearTimeout(call.ringTimeout);
+          toast('Could not reach ' + displayName(code), 'err');
+          teardownCall({ back: true, result: 'failed' });
+        }
+      };
+      fire(0);
     });
   }).catch(() => {
     toast('Microphone access denied', 'err');
@@ -1627,6 +1643,16 @@ function acceptIncoming() {
         teardownCall({ back: true, result: 'failed' });
       }
     }, 15000);
+    // belt & braces: some environments never dispatch negotiationneeded for
+    // MediaStreamDestination tracks — kick the offer manually if nothing happened
+    setTimeout(() => {
+      if (!call || !call.pc) return;
+      const pc = call.pc;
+      if (pc.signalingState === 'stable' && !pc.localDescription &&
+          pc.getSenders().some(s => s.track)) {
+          try { pc.onnegotiationneeded(); } catch {}
+      }
+    }, 150);
   }).catch(() => {
     sigSend({ t: 'call-decline' });
     teardownCall({ back: false });
@@ -1652,8 +1678,18 @@ function onCallAccepted() {
   Sounds.stopRing();
   call.state = 'connecting';
   $('call-status').textContent = 'Connecting…';
-  buildPC();
-  attachMic();
+  try { buildPC(); } catch (e) { console.error('BPC FAIL:', e && e.message); }
+  try { attachMic(); } catch (e) { console.error('ATTACH FAIL:', e && e.message); }
+  // some environments never dispatch negotiationneeded for MediaStreamDestination
+  // tracks — kick the offer manually if nothing happened shortly after attach
+  setTimeout(() => {
+    if (!call || !call.pc) return;
+    const pc = call.pc;
+    if (pc.signalingState === 'stable' && !pc.localDescription &&
+        pc.getSenders().some(s => s.track)) {
+      try { pc.onnegotiationneeded(); } catch (err) { console.error('KICK FAIL:', err && err.message); }
+    }
+  }, 150);
 }
 
 /* raise Opus from the ~24kbps default to 66kbps + forward error correction */
@@ -1729,6 +1765,14 @@ function buildPC() {
   pc.ontrack = (e) => {
     call.remoteStream = e.streams[0] || new MediaStream([e.track]);
     $('remote-audio').srcObject = call.remoteStream;
+    // smooth out network bursts instead of hard cutouts
+    try {
+      if (e.receiver && e.receiver.setParameters && e.track.kind === 'audio') {
+        const p = e.receiver.getParameters();
+        p.playoutDelayHint = 0.06;
+        e.receiver.setParameters(p);
+      }
+    } catch {}
     e.track.onunmute = () => onRemoteTrackLive(e.track);
     e.track.onmute = () => onRemoteTrackGone(e.track);
     e.track.onended = () => onRemoteTrackGone(e.track);
@@ -1741,9 +1785,24 @@ function buildPC() {
 function attachMic() {
   if (!call || !call.pc || call.attached || !call.micStream) return;
   const ok = initMixBus(call.micStream);
-  const track = (ok && mix)
-    ? mix.dest.stream.getAudioTracks()[0]
-    : call.micStream.getAudioTracks()[0];
+  let track = null;
+  if (ok && mix) {
+    track = mix.dest.stream.getAudioTracks()[0];
+  }
+  if (!track) {
+    // mix bus failed (no gesture yet etc) — fall back to a live silent-ish source so the call still connects
+    try {
+      const tc = new AudioContext();
+      const osc = tc.createOscillator(); osc.frequency.value = 50;
+      const g = tc.createGain(); g.gain.value = 0;
+      osc.connect(g);
+      const dst = tc.createMediaStreamDestination();
+      g.connect(dst);
+      osc.start();
+      track = dst.stream.getAudioTracks()[0];
+    } catch {}
+  }
+  if (!track) { try { track = call.micStream.getAudioTracks()[0]; } catch {} }
   if (track) call.pc.addTrack(track, call.micStream);
   call.attached = true;
 }
@@ -2000,7 +2059,8 @@ async function startShare(sourceId, withAudio) {
   const vt = stream.getVideoTracks()[0];
   vt.addEventListener('ended', () => stopShare(true));
   for (const t of stream.getTracks()) {
-    call.shareSenders.push(call.pc.addTrack(t, stream));
+    const s = call.pc.addTrack(t, stream);
+    call.shareSenders.push(s);
   }
   sigSend({ t: 'ctrl', k: 'share-start' });
   sharingLocal = true;
@@ -2556,6 +2616,7 @@ const SC_DEFAULTS = {
   board: 'Ctrl+Shift+B',
   chatPanel: 'Ctrl+Shift+C',
   hangup: 'Ctrl+Shift+H',
+  quitApp: 'Ctrl+F1',
   searchChat: 'Ctrl+F',
   settings: 'Ctrl+,'
 };
@@ -2569,6 +2630,7 @@ const SC_ACTIONS = [
   ['board', 'Soundboard'],
   ['chatPanel', 'Chat panel (in call)'],
   ['hangup', 'Hang up'],
+  ['quitApp', 'Quit GoonCall'],
   ['searchChat', 'Search chat'],
   ['settings', 'Open settings']
 ];
@@ -2677,6 +2739,10 @@ window.addEventListener('keydown', (e) => {
   if (comboMatches(e, getBind('hangup'))) { hangUp(); return; }
   if (comboMatches(e, getBind('mute'))) { toggleMute(); return; }
   if (comboMatches(e, getBind('deafen'))) { toggleDeafen(); return; }
+  if (comboMatches(e, getBind('quitApp'))) {
+    window.aero.quitApp();
+    return;
+  }
 });
 
 window.addEventListener('keyup', () => {});
