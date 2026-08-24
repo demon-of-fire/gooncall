@@ -3097,6 +3097,7 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (comboMatches(e, getBind('settings'))) { e.preventDefault(); openSettings(); return; }
+  if (comboMatches(e, getBind('quitApp'))) { e.preventDefault(); window.aero.quitApp(); return; }
 
   if (settings.ptt && e.code === 'Space' && !e.repeat && call && call.state !== 'incoming' && !$('dlg-incoming').open) {
     e.preventDefault();
@@ -3156,10 +3157,6 @@ window.addEventListener('keydown', (e) => {
   if (comboMatches(e, getBind('stopSounds'))) { stopAllSounds(); return; }
   if (comboMatches(e, getBind('mute')) && !settings.ptt) { toggleMute(); return; }
   if (comboMatches(e, getBind('deafen'))) { toggleDeafen(); return; }
-  if (comboMatches(e, getBind('quitApp'))) {
-    window.aero.quitApp();
-    return;
-  }
 });
 
 window.addEventListener('keyup', (e) => {
