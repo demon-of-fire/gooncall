@@ -67,6 +67,7 @@ function showWatchStage(on) {
 
 function openWatch(url) {
   if (!call) { toast('Start a call first', 'err'); return; }
+  if (sharingLocal) { toast('Stop screen sharing first', 'err'); return; }
   const id = ytId(url);
   const kind = id ? 'yt' : 'file';
   watch = { url: id ? id : url, kind, host: true, playing: false, pos: 0, lastSync: Date.now(), applying: false };

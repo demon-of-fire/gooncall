@@ -346,6 +346,19 @@ function wireConn(conn) {
     presence.set(code, stillOpen);
     renderFriends(); renderConnState();
     if (chatOpen === code) renderChatStatus();
+    // fail any in-flight transfers to this peer so they don't hang at 47%
+    for (const [id, x] of [...xfersIn.entries()]) {
+      if (x.code !== code) continue;
+      if (x.disk) window.aero.xferAbort(id);
+      xfersIn.delete(id);
+      const entry = (chats[code] || []).find(c => c.id === id);
+      if (entry && entry.xfer) {
+        delete entry.xfer;
+        entry.failed = true;
+        saveChats();
+        if (chatOpen === code) renderChatLog(code);
+      }
+    }
     if (!stillOpen && call && call.peerCode === code && call.state !== 'idle') {
       toast((displayName(code)) + ' disconnected', 'err');
       teardownCall({ back: false, result: 'failed' });
@@ -455,7 +468,7 @@ async function onData(conn, raw) {
     case 'hello': {
       peerState[code] = { idle: !!m.idle, status: String(m.status || '').slice(0, 80), act: String(m.act || '').slice(0, 60) };
       const helloF = friendByCode(code);
-      if (m.avv && m.avv !== (helloF && helloF.avv)) requestAvatar(code);
+      if (helloF && m.avv && m.avv !== helloF.avv) requestAvatar(code);
       const f = friendByCode(code);
       if (!f) {
         if (dismissedCodes.includes(code)) break;
@@ -888,7 +901,7 @@ async function sendAttachment(kind, input, name) {
   pushChat(code, entry);
   renderChatLog(code);
   safeSend(conn, { t: 'xfer-start', id, name, size, mime: entry.mime, kind, disk: useDisk });
-  const track = { cancelled: false };
+  const track = { cancelled: false, code };
   xfersOut.set(id, track);
 
   const u8 = useDisk ? null : new Uint8Array(await input.arrayBuffer());
@@ -1834,6 +1847,7 @@ function removeFriend(code) {
   friends = friends.filter(x => x.code !== code);
   delete chats[code];
   delete outbox[code];
+  delete drafts[code];
   setUnread(code, 0);
   saveFriends(); saveChats(); saveOutbox();
   const c = conns.get(code);
@@ -2467,6 +2481,7 @@ function applyStage() {
 
 async function startShare(sourceId, withAudio) {
   if (!call || !call.pc) { toast('Not in a call', 'err'); return; }
+  if (watch) { toast('Close the watch party first (Watch button)', 'err'); return; }
   const p = SHARE_PRESETS[settings.sharePreset] || SHARE_PRESETS.balanced;
   const constraints = {
     audio: withAudio ? { mandatory: { chromeMediaSource: 'desktop' } } : false,
