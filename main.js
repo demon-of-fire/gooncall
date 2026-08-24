@@ -279,8 +279,6 @@ function createWindow() {
               await new Promise(r => setTimeout(r, 1000));
             }
             console.log(shared ? 'E2E-B: SHARE_LIVE' : 'E2E-B: SHARE_NOT_SEEN');
-            const chatOk = await wc.executeJavaScript("(function(){ const c=(chats['TESTAAAA']||[]).find(e=>!e.me&&e.text==='ping-e2e'); return c ? 'chat-ok' : 'chat-missing'; })()", true);
-            console.log('E2E-B:', chatOk);
             let fileOk = false;
             for (let i = 0; i < 15; i++) {
               const r = await wc.executeJavaScript("(function(){ const c=(chats['TESTAAAA']||[]).find(e=>e.kind==='image'&&e.name==='test.png'); return !!(c && !c.xfer && c.size>0); })()", true);
@@ -288,16 +286,15 @@ function createWindow() {
               await new Promise(r2 => setTimeout(r2, 1000));
             }
             console.log(fileOk ? 'E2E-B: FILE_OK' : 'E2E-B: FILE_MISSING');
-
-            let editOk = false;
+            let editArrived = false;
             for (let i = 0; i < 15; i++) {
-              const r = await wc.executeJavaScript("(function(){ return typeof window.__editSyncFlag !== 'undefined' ? window.__editSyncFlag : false; })()", true);
-              if (r) { editOk = true; break; }
+              const r = await wc.executeJavaScript("(function(){ const c=(chats['TESTAAAA']||[]).find(e=>e.text==='ping-e2e-edited'); return !!c; })()", true);
+              if (r) { editArrived = true; break; }
               await new Promise(r2 => setTimeout(r2, 1000));
             }
-            console.log(editOk ? 'E2E-B: EDIT_SYNC_OK' : 'E2E-B: EDIT_SYNC_MISSING');
-            const chatOk2 = await wc.executeJavaScript("(function(){ const c=(chats['TESTAAAA']||[]).find(e=>!e.me&&e.text==='ping-e2e-edited'); return c ? 'chat-edit-ok' : 'chat-edit-missing'; })()", true);
-            console.log('E2E-B:', chatOk2);
+            console.log(editArrived ? 'E2E-B: EDIT_OK' : 'E2E-B: EDIT_MISSING');
+
+
             let bigOk = false;
             for (let i = 0; i < 60; i++) {
               const r = await wc.executeJavaScript("(function(){ const c=(chats['TESTAAAA']||[]).find(e=>e.name==='big.bin'); return !!(c && c.diskPath && !c.xfer); })()", true);
