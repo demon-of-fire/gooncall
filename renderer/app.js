@@ -1111,12 +1111,7 @@ function renderChatLog(code, forceScroll) {
     const cont = prev && prev.me === it.me && Math.abs((it.ts || 0) - (prev.ts || 0)) < 300000;
     const row = document.createElement('div');
     row.className = 'msg' + (it.me ? ' me' : ' them') + (cont ? ' cont' : '');
-    row.tabIndex = 0;
-    row.setAttribute('role', 'article');
-    row.setAttribute('aria-label',
-      (it.me ? 'Your message' : 'Message from ' + displayName(code)) + ', ' +
-      d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
-      (it.deleted ? ', deleted' : '') + '.');
+    row.tabIndex = -1;
     if (it.id) row.dataset.mid = it.id;
 
     const av = document.createElement('div');
@@ -1147,6 +1142,19 @@ function dayFmtLong(d) {
   return new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(d);
 }
 function appendMsgContent(main, code, it, d, showMeta) {
+  // screen-reader sentence: always present, always plain, always first
+  const who = it.me ? identity.name : displayName(code);
+  const what = it.deleted ? 'message deleted'
+    : it.kind === 'voice' ? 'voice message'
+    : it.kind === 'image' ? 'image: ' + (it.name || '')
+    : it.kind === 'file' ? 'file: ' + (it.name || '') + ', ' + fmtSize(it.size || 0)
+    : it.text || '';
+  const sr = document.createElement('span');
+  sr.className = 'sr-only';
+  sr.textContent = who + ' said: ' + what +
+    (it.edited ? ', edited' : '') + '.';
+  main.appendChild(sr);
+
   if (it.deleted) {
     const del = document.createElement('div');
     del.className = 'deleted-msg';
