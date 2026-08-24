@@ -1,5 +1,10 @@
 # GoonCall Changelog
 
+## v1.4.2 - Quiet Logs
+- Way less log spam (offline friends no longer fill the log)
+- Fixed two harmless startup warnings
+- Reminder: updates apply after you fully QUIT and reopen GoonCall
+
 ## v1.4.1 - Soundboard Studio
 - **Recording countdown** (3-2-1) so you never miss the start of a sound
 - **Live timer** while recording

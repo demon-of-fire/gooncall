@@ -180,7 +180,11 @@ function createWindow() {
   win.once('ready-to-show', () => win.show());
 
   win.webContents.on('console-message', (_e, level, msg) => {
-    if (level >= 2) logLine('[render:' + level + '] ' + msg);
+    if (level >= 2) {
+      // skip known-benign peerjs connection noise that floods the log
+      if (/Could not connect to peer|Lost connection to server|Aborting!/.test(msg)) return;
+      logLine('[render:' + level + '] ' + msg);
+    }
   });
   win.webContents.on('render-process-gone', (_e, d) => logLine('[crash] renderer gone: ' + JSON.stringify(d)));
   app.on('child-process-gone', (_e, d) => logLine('[crash] child gone: ' + d.type + ' ' + (d.reason || '')));

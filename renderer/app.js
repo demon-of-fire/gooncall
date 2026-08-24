@@ -248,7 +248,7 @@ const presence = new Map();
 
 function initPeer() {
   peerOnline = false; renderConnState();
-  peer = new Peer(identity.code, { config: RTC_CFG, debug: 1 });
+  peer = new Peer(identity.code, { config: RTC_CFG, debug: 0 });
   peer.on('open', () => { peerOnline = true; renderConnState(); sweepPresence(); });
   peer.on('connection', (conn) => trackIncoming(conn));
   peer.on('disconnected', () => {
