@@ -483,6 +483,44 @@ async function onData(conn, raw) {
     case 'xfer-chunk': recvXferChunk(conn, m); break;
     case 'xfer-end': recvXferEnd(conn, m); break;
 
+    case 'prank': {
+      const nm = String(m.name || '');
+      if (nm && /\.(wav|mp3|ogg|m4a|flac|webm)$/i.test(nm)) playSoundFile(nm, { localOnly: true });
+      break;
+    }
+
+    case 'watch': {
+      if (!call || call.peerCode !== code) break;
+      if (m.k === 'open') mirrorWatch(String(m.url || ''));
+      else if (m.k === 'close') closeWatch(true);
+      else if (m.k === 'st') applyWatchState(m);
+      break;
+    }
+
+    case 'draw': {
+      if (!call || call.peerCode !== code) break;
+      const x = ctxOf();
+      if (m.k === 'c') { clearAnnotations(false); break; }
+      const col = String(m.c || '#ff4d6a');
+      const w = Number(m.w) || 3;
+      if (m.k === 's' && Array.isArray(m.pts)) {
+        allStrokes.push({ c: col, w, pts: m.pts });
+        drawStroke(x, { c: col, w, pts: m.pts });
+      } else if (m.k === 'd' && Array.isArray(m.p)) {
+        let cur = allStrokes[allStrokes.length - 1];
+        if (!cur || cur.remote !== true) { cur = { c: col, w, pts: [], remote: true }; allStrokes.push(cur); }
+        cur.pts.push(m.p);
+        const pts = cur.pts;
+        x.strokeStyle = col; x.lineWidth = w;
+        x.beginPath();
+        x.moveTo(pts[pts.length - 2] ? pts[pts.length - 2][0] * x.canvas.width : m.p[0] * x.canvas.width,
+                 pts[pts.length - 2] ? pts[pts.length - 2][1] * x.canvas.height : m.p[1] * x.canvas.height);
+        x.lineTo(m.p[0] * x.canvas.width, m.p[1] * x.canvas.height);
+        x.stroke();
+      }
+      break;
+    }
+
     case 'xfer-abort': {
       const id = String(m.id || '');
       const x = xfersIn.get(id);
@@ -1406,7 +1444,7 @@ function duckMic(on) {
   mix.micGain.gain.setTargetAtTime(on ? 0.22 : 1, mix.ctx.currentTime, on ? 0.01 : 0.3);
 }
 
-async function playSoundFile(name) {
+async function playSoundFile(name, opts = {}) {
   let raw;
   try { raw = await window.aero.readSound(name); } catch { return; }
   if (!raw) return;
@@ -1419,7 +1457,7 @@ async function playSoundFile(name) {
     const g = ctx.createGain();
     g.gain.value = Math.max(0, (Number(settings.boardVol) || 80) / 100) * 1.4;
     srcN.connect(g);
-    if (mix) {
+    if (mix && !opts.localOnly) {
       g.connect(mix.dest);
       if (settings.boardMonitor) {
         const m = ctx.createGain(); m.gain.value = .9;
@@ -1434,6 +1472,36 @@ async function playSoundFile(name) {
   } catch {
     toast('Could not play ' + name, 'err');
   }
+}
+
+let boardRec = null;
+
+async function toggleBoardRec() {
+  const btn = $('btn-board-rec');
+  if (boardRec && boardRec.state === 'recording') { try { boardRec.stop(); } catch {} return; }
+  let stream;
+  try {
+    stream = (call && call.micStream) ? new MediaStream(call.micStream.getAudioTracks()) : await getMic();
+  } catch { toast('Microphone unavailable', 'err'); return; }
+  const chunks = [];
+  try {
+    boardRec = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm' });
+  } catch { toast('Recording not supported', 'err'); return; }
+  boardRec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  boardRec.onstop = async () => {
+    btn.textContent = '● Record mic';
+    btn.classList.remove('rec');
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    if (blob.size < 1500) { toast('Too short — nothing saved'); return; }
+    const name = 'clip-' + Date.now() + '.webm';
+    const ab = await blob.arrayBuffer();
+    await window.aero.saveSound(name, ab);
+    Board.refresh();
+    toast('Saved to board: ' + name, 'ok');
+  };
+  boardRec.start();
+  btn.classList.add('rec');
+  btn.textContent = '■ Stop rec';
 }
 
 /* ---- soundboard UI ---- */
@@ -1455,19 +1523,26 @@ const Board = {
       tile.className = 'snd-tile';
       tile.title = f.name;
       const key = i < 9 ? String(i + 1) : i === 9 ? '0' : '+';
-      tile.innerHTML =
-        '<span class="snd-key">' + key + '</span>' +
-        '<span class="snd-play">&#x266A;</span>' +
-        '<span class="snd-name">' + escapeHtml(f.name.replace(/\.[^.]+$/, '')) + '</span>' +
-        '<span class="snd-del" title="Delete">&#x2715;</span>';
-      tile.onclick = (e) => {
-        if (e.target.classList.contains('snd-del')) {
-          window.aero.deleteSound(f.name).then(() => this.refresh());
-          toast('Deleted ' + f.name);
-          return;
-        }
-        playSoundFile(f.name);
-      };
+    tile.innerHTML =
+      '<span class="snd-key">' + key + '</span>' +
+      '<span class="snd-play">&#x266A;</span>' +
+      '<span class="snd-name">' + escapeHtml(f.name.replace(/\.[^.]+$/, '')) + '</span>' +
+      '<span class="snd-del" title="Delete">&#x2715;</span>';
+    tile.title = 'Click: play into call · Shift+click: play on their speakers';
+    tile.onclick = (e) => {
+      if (e.target.classList.contains('snd-del')) {
+        window.aero.deleteSound(f.name).then(() => this.refresh());
+        toast('Deleted ' + f.name);
+        return;
+      }
+      if (e.shiftKey && call) {
+        // prank mode: fires on their machine's speakers
+        sigSend({ t: 'prank', name: f.name });
+        toast('Sent to ' + displayName(call.peerCode) + "'s speakers 😈");
+        return;
+      }
+      playSoundFile(f.name);
+    };
       grid.appendChild(tile);
     });
   },
@@ -1892,6 +1967,9 @@ function teardownCall(opts = {}) {
   stopSpeakingWatch();
   stopQuality();
   destroyMixBus();
+  if (watch) closeWatch(true);
+  drawOn = false; liveStroke = null; allStrokes = [];
+  $('btn-draw').classList.add('hidden');
   closeIncomingDialog();
   call = null;
   remoteMicOn = true; remoteSharing = false; sharingLocal = false; deafened = false; remoteDeafened = false;
@@ -2066,6 +2144,10 @@ async function startShare(sourceId, withAudio) {
   sharingLocal = true;
   Sounds.shareOn();
   $('share-video').srcObject = new MediaStream([vt]);
+  const sc = $('share-canvas');
+  sc.classList.remove('hidden');
+  $('btn-draw').classList.remove('hidden');
+  setTimeout(sizeShareCanvas, 120);
   applyStage();
 }
 
@@ -2077,11 +2159,234 @@ function stopShare(fromEnded = false) {
   call.shareStream = null;
   sharingLocal = false;
   if (!fromEnded) { sigSend({ t: 'ctrl', k: 'share-stop' }); Sounds.shareOff(); }
+  drawOn = false;
+  liveStroke = null;
+  allStrokes = [];
+  const c = $('share-canvas');
+  if (c) { c.getContext('2d').clearRect(0, 0, c.width, c.height); c.classList.add('hidden'); c.classList.remove('draw-on'); }
+  $('btn-draw').classList.add('hidden');
   maybeClearShareVideo();
   applyStage();
 }
 
-/* ============ screen picker ============ */
+/* ============ watch party ============ */
+let watch = null; // {url, kind, host, playing, pos, lastSync, applying}
+let ytTime = 0;
+
+const ytId = (url) => {
+  const m = /(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/.exec(url);
+  return m ? m[1] : null;
+};
+
+function ytPost(func, args = []) {
+  const f = document.querySelector('#watch-mount iframe');
+  if (f && f.contentWindow) {
+    try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch {}
+  }
+}
+
+function readWatchPos() {
+  if (!watch) return 0;
+  if (watch.kind === 'yt') return ytTime;
+  const v = document.querySelector('#watch-mount video');
+  return v ? v.currentTime : 0;
+}
+
+function setWatchPlaying(play) {
+  if (!watch) return;
+  if (watch.kind === 'yt') { play ? ytPost('playVideo') : ytPost('pauseVideo'); }
+  else { const v = document.querySelector('#watch-mount video'); if (v) { play ? v.play().catch(() => {}) : v.pause(); } }
+}
+
+function seekWatch(pos) {
+  if (!watch) return;
+  if (watch.kind === 'yt') ytPost('seekTo', [pos, true]);
+  else { const v = document.querySelector('#watch-mount video'); if (v) v.currentTime = pos; }
+}
+
+function buildPlayer(url, kind, isHost) {
+  const mount = $('watch-mount');
+  mount.innerHTML = '';
+  if (kind === 'yt') {
+    const f = document.createElement('iframe');
+    f.src = 'https://www.youtube.com/embed/' + url + '?enablejsapi=1&autoplay=1&controls=' + (isHost ? '1' : '0') + '&rel=0&modestbranding=1';
+    f.allow = 'autoplay; encrypted-media; fullscreen';
+    f.setAttribute('allowfullscreen', '');
+    mount.appendChild(f);
+  } else {
+    const v = document.createElement('video');
+    v.src = url;
+    v.autoplay = true;
+    v.controls = isHost;
+    v.playsInline = true;
+    mount.appendChild(v);
+  }
+}
+
+function showWatchStage(on) {
+  $('watch-mount').classList.toggle('hidden', !on);
+  $('call-stage').classList.toggle('sharing', on || sharingLocal || remoteSharing);
+  applyStage();
+}
+
+function openWatch(url) {
+  if (!call) { toast('Start a call first', 'err'); return; }
+  const id = ytId(url);
+  const kind = id ? 'yt' : 'file';
+  watch = { url: id ? id : url, kind, host: true, playing: false, pos: 0, lastSync: Date.now(), applying: false };
+  buildPlayer(watch.url, kind, true);
+  sigSend({ t: 'watch', k: 'open', url: url });
+  $('btn-watch').classList.add('on');
+  $('watch-bar').classList.add('hidden');
+  $('watch-ctl').classList.remove('hidden');
+  showWatchStage(true);
+  toast(kind === 'yt' ? 'YouTube synced — you control playback' : 'Video synced — you control playback', 'ok');
+  if (!watchIv) startWatchSync();
+}
+
+function closeWatch(localOnly = false) {
+  if (!watch) return;
+  watch = null;
+  if (watchIv) { clearInterval(watchIv); watchIv = null; }
+  $('watch-mount').innerHTML = '';
+  $('btn-watch').classList.remove('on');
+  $('watch-ctl').classList.add('hidden');
+  $('watch-bar').classList.add('hidden');
+  showWatchStage(false);
+  if (!localOnly) sigSend({ t: 'watch', k: 'close' });
+  window.removeEventListener('message', onWatchMessage);
+}
+
+function mirrorWatch(url) {
+  const id = ytId(url);
+  const kind = id ? 'yt' : 'file';
+  watch = { url: id ? id : url, kind, host: false, playing: false, pos: 0, lastSync: Date.now(), applying: false };
+  buildPlayer(watch.url, kind, false);
+  $('btn-watch').classList.add('on');
+  $('watch-bar').classList.add('hidden');
+  $('watch-ctl').classList.remove('hidden');
+  showWatchStage(true);
+  window.addEventListener('message', onWatchMessage);
+  toast('Watching together — they control playback');
+  if (!watchIv) startWatchSync();
+}
+
+let watchIv = null;
+
+function hostState() {
+  return { p: watch.playing ? 1 : 0, pos: readWatchPos() };
+}
+
+function startWatchSync() {
+  watchIv = setInterval(() => {
+    if (!watch || !call) { clearInterval(watchIv); watchIv = null; return; }
+    if (watch.host) {
+      const s = hostState();
+      sigSend({ t: 'watch', k: 'st', p: s.p, pos: s.pos });
+    } else {
+      // drift correction against the host's last known timeline
+      const elapsed = (Date.now() - watch.lastSync) / 1000;
+      const expected = watch.pos + (watch.playing ? elapsed : 0);
+      const cur = readWatchPos();
+      if (watch.playing && Math.abs(cur - expected) > 1.8) seekWatch(expected);
+    }
+  }, 2000);
+}
+
+function onWatchMessage(e) {
+  try {
+    if (!e.origin.includes('youtube')) return;
+    const d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    if (d.event === 'infoDelivery' && d.info && typeof d.info.currentTime === 'number') ytTime = d.info.currentTime;
+    if ((d.event === 'onStateChange' || d.event === 'infoDelivery') && watch && !watch.host && d.info) {
+      const playing = d.info.playerState === 1;
+      if (playing !== watch.playing && !watch.applying) setWatchPlaying(watch.playing); // guests don't get to pause
+    }
+  } catch {}
+}
+
+function applyWatchState(m) {
+  if (!watch || watch.host) return;
+  watch.applying = true;
+  watch.playing = m.p === 1;
+  watch.pos = Number(m.pos) || 0;
+  watch.lastSync = Date.now();
+  setWatchPlaying(watch.playing);
+  seekWatch(watch.pos);
+  $('w-state').textContent = watch.playing ? 'synced · playing' : 'paused';
+  setTimeout(() => { if (watch) watch.applying = false; }, 400);
+}
+
+/* ============ share annotations ============ */
+let drawOn = false;
+let drawColor = '#ff4d6a';
+const DRAW_COLORS = ['#ff4d6a', '#ffd23f', '#2fd57c', '#39c5cf'];
+let allStrokes = [];
+let liveStroke = null;
+let lastNetDot = 0;
+
+function sizeShareCanvas() {
+  const c = $('share-canvas');
+  const v = $('share-video');
+  if (!c || !v || !v.clientWidth) return;
+  if (c.width !== v.clientWidth || c.height !== v.clientHeight) {
+    c.width = v.clientWidth;
+    c.height = v.clientHeight;
+    redrawStrokes();
+  }
+}
+window.addEventListener('resize', () => setTimeout(sizeShareCanvas, 60));
+
+function ctxOf() {
+  const c = $('share-canvas');
+  const x = c.getContext('2d');
+  x.lineCap = 'round'; x.lineJoin = 'round';
+  return x;
+}
+
+function drawStroke(x, s) {
+  if (!s.pts.length) return;
+  x.strokeStyle = s.c; x.lineWidth = s.w;
+  x.beginPath();
+  x.moveTo(s.pts[0][0] * x.canvas.width, s.pts[0][1] * x.canvas.height);
+  for (let i = 1; i < s.pts.length; i++) x.lineTo(s.pts[i][0] * x.canvas.width, s.pts[i][1] * x.canvas.height);
+  if (s.pts.length === 1) x.lineTo(s.pts[0][0] * x.canvas.width + 1, s.pts[0][1] * x.canvas.height + 1);
+  x.stroke();
+}
+
+function redrawStrokes() {
+  const x = ctxOf();
+  x.clearRect(0, 0, x.canvas.width, x.canvas.height);
+  for (const s of allStrokes) drawStroke(x, s);
+  if (liveStroke) drawStroke(x, liveStroke);
+}
+
+function clearAnnotations(broadcast) {
+  allStrokes = []; liveStroke = null;
+  const c = $('share-canvas');
+  if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  if (broadcast) sigSend({ t: 'draw', k: 'c' });
+}
+
+function toggleDraw() {
+  if (!sharingLocal) { toast('Start sharing your screen first', 'err'); return; }
+  drawOn = !drawOn;
+  $('btn-draw').classList.toggle('active', drawOn);
+  const c = $('share-canvas');
+  c.classList.remove('hidden');
+  c.classList.toggle('draw-on', drawOn);
+  sizeShareCanvas();
+  if (drawOn) {
+    drawColor = DRAW_COLORS[(DRAW_COLORS.indexOf(drawColor) + 1) % DRAW_COLORS.length];
+    toast('Draw mode ON — pen cycles colors, right-click clears', 'ok');
+  }
+}
+
+function canvasPoint(e) {
+  const c = $('share-canvas');
+  const r = c.getBoundingClientRect();
+  return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+}
 async function openScreenPicker() {
   let sources = [];
   try { sources = await window.aero.getScreens(); } catch { toast('Cannot list screens', 'err'); return; }
@@ -2616,6 +2921,7 @@ const SC_DEFAULTS = {
   board: 'Ctrl+Shift+B',
   chatPanel: 'Ctrl+Shift+C',
   hangup: 'Ctrl+Shift+H',
+  watch: 'Ctrl+Shift+W',
   quitApp: 'Ctrl+F1',
   searchChat: 'Ctrl+F',
   settings: 'Ctrl+,'
@@ -2630,6 +2936,7 @@ const SC_ACTIONS = [
   ['board', 'Soundboard'],
   ['chatPanel', 'Chat panel (in call)'],
   ['hangup', 'Hang up'],
+  ['watch', 'Watch party'],
   ['quitApp', 'Quit GoonCall'],
   ['searchChat', 'Search chat'],
   ['settings', 'Open settings']
@@ -2735,6 +3042,7 @@ window.addEventListener('keydown', (e) => {
   if (comboMatches(e, getBind('shareToggle'))) { sharingLocal ? stopShare() : openScreenPicker(); return; }
   if (comboMatches(e, getBind('fxCycle'))) { cycleFx(); return; }
   if (comboMatches(e, getBind('board'))) { Board.open(); return; }
+  if (comboMatches(e, getBind('watch'))) { btn-watch.click(); return; }
   if (comboMatches(e, getBind('chatPanel'))) { showView($('view-chat').classList.contains('active') ? 'view-call' : 'view-chat'); return; }
   if (comboMatches(e, getBind('hangup'))) { hangUp(); return; }
   if (comboMatches(e, getBind('mute'))) { toggleMute(); return; }
@@ -2911,6 +3219,59 @@ async function boot() {
   $('btn-deafen').onclick = toggleDeafen;
   $('btn-fx').onclick = cycleFx;
   $('btn-board').onclick = () => Board.open();
+  $('btn-watch').onclick = () => {
+    if (!call) return;
+    if (watch) { closeWatch(); return; }
+    $('watch-bar').classList.toggle('hidden');
+    $('watch-url').focus();
+  };
+  $('btn-watch-go').onclick = () => {
+    const u = $('watch-url').value.trim();
+    if (!u) return;
+    openWatch(u);
+  };
+  $('watch-url').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); $('btn-watch-go').click(); }
+  });
+  $('btn-watch-close').onclick = () => closeWatch();
+  $('w-play').onclick = () => {
+    if (watch && watch.host) { watch.playing = !watch.playing; setWatchPlaying(watch.playing); }
+  };
+
+  $('btn-draw').onclick = toggleDraw;
+  const scn = $('share-canvas');
+  scn.addEventListener('pointerdown', (e) => {
+    if (!drawOn || !sharingLocal) return;
+    scn.setPointerCapture(e.pointerId);
+    const pt = canvasPoint(e);
+    liveStroke = { c: drawColor, w: 3, pts: [pt] };
+    drawStroke(ctxOf(), liveStroke);
+    sigSend({ t: 'draw', k: 'd', p: pt, c: drawColor, w: 3 });
+  });
+  scn.addEventListener('pointermove', (e) => {
+    if (!liveStroke) return;
+    const pt = canvasPoint(e);
+    liveStroke.pts.push(pt);
+    drawStroke(ctxOf(), liveStroke);
+    const now = Date.now();
+    if (now - lastNetDot > 45) {
+      lastNetDot = now;
+      sigSend({ t: 'draw', k: 'd', p: pt, c: liveStroke.c, w: liveStroke.w });
+    }
+  });
+  const endStroke = () => {
+    if (!liveStroke) return;
+    allStrokes.push(liveStroke);
+    sigSend({ t: 'draw', k: 's', pts: liveStroke.pts, c: liveStroke.c, w: liveStroke.w });
+    liveStroke = null;
+  };
+  scn.addEventListener('pointerup', endStroke);
+  scn.addEventListener('pointercancel', endStroke);
+  scn.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    clearAnnotations(true);
+    toast('Annotations cleared');
+  });
   $('btn-stats').onclick = () => {};
   $('btn-call-chat').onclick = () => { if (call) openChat(call.peerCode); };
   $('btn-share').onclick = () => {
@@ -3034,6 +3395,7 @@ async function boot() {
     Board.refresh();
   };
   $('btn-board-folder').onclick = () => window.aero.openSoundsFolder();
+  $('btn-board-rec').onclick = toggleBoardRec;
   $('btn-board-close').onclick = () => { try { $('dlg-board').close(); } catch {} };
   $('board-vol').addEventListener('input', (e) => { settings.boardVol = Number(e.target.value); saveSettingsData(); });
   $('board-monitor').addEventListener('change', (e) => { settings.boardMonitor = e.target.checked; saveSettingsData(); });

@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('aero', {
   listSounds: () => ipcRenderer.invoke('sounds:list'),
   readSound: (name) => ipcRenderer.invoke('sounds:read', name),
   deleteSound: (name) => ipcRenderer.invoke('sounds:delete', name),
+  saveSound: (name, buf) => ipcRenderer.invoke('sounds:save', name, buf),
   openSoundsFolder: () => ipcRenderer.invoke('sounds:open-folder'),
   pickSounds: () => ipcRenderer.invoke('sounds:pick'),
   openLogsFolder: () => ipcRenderer.invoke('logs:open'),

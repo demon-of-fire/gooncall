@@ -644,6 +644,15 @@ ipcMain.handle('sounds:delete', (_e, name) => {
   catch { return false; }
 });
 
+ipcMain.handle('sounds:save', (_e, name, chunk) => {
+  try {
+    const safe = String(name || 'clip.wav').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+    fs.mkdirSync(soundsDir(), { recursive: true });
+    fs.writeFileSync(path.join(soundsDir(), safe), Buffer.from(chunk));
+    return true;
+  } catch { return false; }
+});
+
 ipcMain.handle('sounds:open-folder', async () => {
   try { fs.mkdirSync(soundsDir(), { recursive: true }); } catch {}
   return shell.openPath(soundsDir());

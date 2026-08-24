@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' wss: https:; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob: mediastream:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' wss: https:; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob: https: mediastream:; frame-src https://www.youtube.com https://www.youtube-nocookie.com;" />
   <title>GoonCall — free global voice calls</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="vendor/peerjs.min.js" defer></script>
@@ -103,6 +103,8 @@
             <button id="btn-deafen" class="ctrl on" aria-label="Deafen (D)" aria-pressed="false" title="Deafen (D)">&#x1F507;<span>Deaf</span></button>
             <button id="btn-fx" class="ctrl" aria-label="Cycle voice effect (Ctrl+Shift+F)" title="Voice effect (Ctrl+Shift+F)">&#x1F39B;<span id="fx-label">Clean</span></button>
             <button id="btn-board" class="ctrl" aria-label="Soundboard (Ctrl+Shift+B)" title="Soundboard (Ctrl+Shift+B)">&#x1F3B5;<span>Board</span></button>
+            <button id="btn-watch" class="ctrl" aria-label="Watch together" title="Watch together">&#x1F4FA;<span>Watch</span></button>
+            <button id="btn-draw" class="ctrl hidden" aria-label="Draw on share" title="Draw on your share">&#x270F;<span>Draw</span></button>
             <button id="btn-share" class="ctrl" aria-label="Share your screen (Ctrl+Shift+S)" aria-pressed="false" title="Share screen (Ctrl+Shift+S)">&#x1F5FA;<span>Share</span></button>
             <button id="btn-call-chat" class="ctrl" aria-label="Open chat (Ctrl+Shift+C)" title="Chat (Ctrl+Shift+C)">&#x1F4AC;<span>Chat</span></button>
             <button id="btn-hangup" class="ctrl danger" aria-label="Hang up (Ctrl+Shift+H)" title="Hang up (Ctrl+Shift+H)">&#x23F6;<span>Leave</span></button>
@@ -120,6 +122,17 @@
             </div>
           </div>
           <video id="share-video" class="hidden" autoplay playsinline></video>
+          <canvas id="share-canvas" class="hidden"></canvas>
+          <div id="watch-mount" class="hidden"></div>
+          <div id="watch-bar" class="watch-bar hidden">
+            <input id="watch-url" type="text" placeholder="Paste a YouTube or direct video link…" autocomplete="off" spellcheck="false" />
+            <button id="btn-watch-go" class="primary-btn" type="button">Watch</button>
+            <button id="btn-watch-close" class="ghost-btn small-btn" type="button">Close</button>
+          </div>
+          <div id="watch-ctl" class="watch-ctl hidden">
+            <button id="w-play" class="ghost-btn small-btn" type="button">Play</button>
+            <span id="w-state" class="status">synced</span>
+          </div>
           <div id="share-label" class="share-label hidden"></div>
         </div>
       </section>
@@ -273,6 +286,7 @@
     <div class="board-foot">
       <label><input type="checkbox" id="board-monitor" checked /> Hear clips locally</label>
       <label class="bv">Vol <input type="range" id="board-vol" min="0" max="100" step="5" /></label>
+      <button id="btn-board-rec" class="ghost-btn small-btn" type="button">● Record mic</button>
       <button id="btn-board-add" class="ghost-btn small-btn" type="button">+ Add sounds</button>
       <button id="btn-board-folder" class="ghost-btn small-btn" type="button">Folder</button>
       <button id="btn-board-close" class="primary-btn" type="button">Done</button>
