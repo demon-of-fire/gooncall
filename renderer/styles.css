@@ -432,3 +432,6 @@ body.nudged #app { animation:nudgeshake .5s ease; }
 #rain-layer { position:absolute; inset:0; z-index:8; pointer-events:none; overflow:hidden; }
 .rain-drop { position:absolute; top:-40px; animation:rainfall 2.2s linear forwards; }
 @keyframes rainfall { to { transform:translateY(110vh) rotate(240deg); opacity:.7; } }
+.primary-btn.small-btn { padding:5px 12px; font-size:11.5px; border-radius:8px; }
+.onb-title { text-align:center; }
+.onb-lede { text-align:center; color:var(--txt-dim); font-size:13.5px; line-height:1.7; }

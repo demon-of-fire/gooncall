@@ -3417,6 +3417,11 @@ async function boot() {
   };
   $('btn-copy-code').onclick = doCopy;
   $('btn-copy-code2').onclick = doCopy;
+  $('btn-invite').onclick = async () => {
+    const msg = 'Get GoonCall (free, no account): https://github.com/demon-of-fire/gooncall/releases/latest\nThen add me with my code: ' + identity.code;
+    const ok = await window.aero.clipWrite(msg);
+    toast(ok ? 'Invite copied — paste it to them' : 'Copy failed', ok ? 'ok' : 'err');
+  };
 
   $('friend-filter').addEventListener('input', renderFriends);
 

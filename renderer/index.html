@@ -56,7 +56,7 @@
       <section id="view-home" class="view active">
         <header><h1>Welcome to GoonCall</h1></header>
         <p class="sub">Voice calls, screen sharing, watch parties &mdash; straight to your people. No Nitro.</p>
-        <div class="center hint">Click <b>&#x2B;</b> on the rail, paste their code once &mdash; call any time with one click.<br>Your code: <b id="home-code" class="mono"></b> <button id="btn-copy-code2" class="ghost-btn small-btn" type="button">Copy</button></div>
+        <div class="center hint">Click <b>&#x2B;</b> on the rail, paste their code once &mdash; call any time with one click.<br>Your code: <b id="home-code" class="mono"></b> <button id="btn-copy-code2" class="ghost-btn small-btn" type="button">Copy</button> <button id="btn-invite" class="primary-btn small-btn" type="button">Invite someone</button></div>
         <section id="recent-wrap" class="hidden" aria-label="Recent calls">
           <h2 class="side-label center-label">Recent calls</h2>
           <ul id="recent-list" role="list"></ul>
@@ -336,8 +336,8 @@
   </dialog>
 
   <dialog id="dlg-onboarding" aria-modal="true">
-    <h2 style="text-align:center">Welcome to GoonCall</h2>
-    <p style="text-align:center;color:var(--txt-dim);font-size:13.5px;line-height:1.7">This is your private line - just you and your people.</p>
+    <h2 class="onb-title">Welcome to GoonCall</h2>
+    <p class="onb-lede">This is your private line - just you and your people.</p>
     <div class="onb-step"><span class="onb-num">1</span><div><b>Copy your code</b><br><span class="status">Send it to the one person who matters (any messenger).</span></div></div>
     <div class="onb-step"><span class="onb-num">2</span><div><b>Hit + on the rail</b><br><span class="status">Paste their code. When they do the same, green dot = call time.</span></div></div>
     <div class="onb-step"><span class="onb-num">3</span><div><b>Click their name to chat, phone icon to call</b><br><span class="status">Screen share, watch parties, whiteboard and soundboard included. Free forever.</span></div></div>
