@@ -3796,9 +3796,14 @@ async function boot() {
 
   window.aero.onUpdateStatus((s) => {
     if (!s) return;
+    if (s.kind === 'progress') {
+      const b = $('btn-updates');
+      b.textContent = 'Downloading ' + s.percent + '%';
+      return;
+    }
     if (s.status === 'downloaded') {
-      toast(s.message + ' Click Settings → Install now, or just restart later.', 'ok', true);
-      window.aero.notify('GoonCall update ready', 'v' + s.version + ' downloaded — restart to apply');
+      toast('Update ready — restarting to install v' + s.version + '…', 'ok', true);
+      window.aero.notify('GoonCall update ready', 'v' + s.version + ' — restarting to install');
       markUpdateReady(s.version);
     } else if (s.status === 'available' && s.kind === 'launch') {
       toast(s.message, '');

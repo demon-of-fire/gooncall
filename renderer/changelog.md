@@ -1,5 +1,10 @@
 # GoonCall Changelog
 
+## v1.4.4 - Hands-free updates
+- Live download progress on the Check updates button
+- Updates now install and restart the app automatically - zero clicks
+- Clearer status at every step
+
 ## v1.4.2 - Quiet Logs
 - Way less log spam (offline friends no longer fill the log)
 - Fixed two harmless startup warnings
@@ -22,6 +27,11 @@
 - Phone remote, watch queue + speed sync, whiteboard, snip button, pins, nudge, quote-jump
 
 # GoonCall Changelog
+
+## v1.4.4 - Hands-free updates
+- Live download progress on the Check updates button
+- Updates now install and restart the app automatically - zero clicks
+- Clearer status at every step
 
 ## v1.3.0 — Discord Mode + Phone Remote
 - **Full UI overhaul** — icon rail, DM-style list, flat messages, floating call dock

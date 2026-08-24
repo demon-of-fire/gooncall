@@ -524,11 +524,31 @@ try {
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = true;
   updater.setFeedURL({ provider: 'github', owner: UPDATE_REPO.owner, repo: UPDATE_REPO.repo });
+
+  /* live progress + auto-restart once the download lands */
+  let lastProgPush = 0;
+  let autoInstTm = null;
+  updater.on('download-progress', (p) => {
+    const now = Date.now();
+    if (now - lastProgPush < 400) return;
+    lastProgPush = now;
+    logLine('[updater] progress ' + Math.round(p.percent) + '%');
+    pushUpdateToWindow({ kind: 'progress', status: 'progress', percent: Math.round(p.percent) });
+  });
+  updater.on('update-downloaded', (ii) => {
+    logLine('[updater] downloaded v' + ii.version + ' - restarting shortly to install');
+    pushUpdateToWindow({ kind: 'downloaded', status: 'downloaded', version: ii.version });
+    clearTimeout(autoInstTm);
+    autoInstTm = setTimeout(() => {
+      forceQuit = true;
+      try { updater.quitAndInstall(false, false); } catch (e) {}
+    }, 5000);
+  });
 } catch (e) {
   console.log('electron-updater not available, update checks disabled');
 }
 
-function pushUpdateToWindow(extra = {}) {
+function pushUpdateToWindow(extra = {}) { // eslint-disable-line
   if (win && !win.isDestroyed()) {
     try { win.webContents.send('update-status', extra); } catch {}
   }
