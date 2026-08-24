@@ -260,7 +260,7 @@ function initPeer() {
     if (type === 'peer-unavailable') {
       const m = /peer\s+([A-Za-z0-9]+)/.exec(err.message || '');
       const code = m ? m[1] : null;
-      presence.set(code, false); renderFriends(); renderConnState();
+      presence.set(code, false); updateAllFriendRows(); renderConnState();
       return;
     }
     if (type === 'unavailable-id') {
@@ -331,7 +331,7 @@ function wireConn(conn) {
   safeSend(conn, helloPayload());
   safeSend(conn, { t: 'presence', idle: isIdle, status: identity.status || '' });
   presence.set(code, true);
-  renderFriends(); renderConnState();
+  updateAllFriendRows(); renderConnState();
   if (chatOpen === code) renderChatStatus();
   flushOutbox(code);
   conn.on('data', (m) => onData(conn, m));
@@ -344,7 +344,7 @@ function wireConn(conn) {
     if (conns.get(code) === conn) conns.delete(code);
     const stillOpen = conns.has(code) && conns.get(code).open;
     presence.set(code, stillOpen);
-    renderFriends(); renderConnState();
+    updateAllFriendRows(); renderConnState();
     if (chatOpen === code) renderChatStatus();
     // fail any in-flight transfers to this peer so they don't hang at 47%
     for (const [id, x] of [...xfersIn.entries()]) {
@@ -439,7 +439,7 @@ function bumpActivity() {
   idleTm = setTimeout(() => {
     isIdle = true;
     broadcastPresence();
-    renderFriends(); renderConnState();
+    updateAllFriendRows(); renderConnState();
   }, 5 * 60 * 1000);
 }
 
@@ -486,14 +486,14 @@ async function onData(conn, raw) {
         }
         upsertFriend(code, m.name);
       }
-      renderFriends(); renderConnState();
+      updateAllFriendRows(); renderConnState();
       if (chatOpen === code) renderChatStatus();
       break;
     }
 
     case 'presence': {
       peerState[code] = { idle: !!m.idle, status: String(m.status || '').slice(0, 80), act: String(m.act || '').slice(0, 60) };
-      renderFriends();
+      updateAllFriendRows();
       if (chatOpen === code) renderChatStatus();
       break;
     }
@@ -1830,13 +1830,36 @@ function friendRow(f) {
   li.onkeydown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChat(f.code); }
   };
+  rowEls.set(f.code, { row: li, dot: av, sub: sub, badge });
   return li;
+}
+
+const rowEls = new Map();
+
+function friendDyn(code) {
+  const f = friendByCode(code);
+  const el = rowEls.get(code);
+  if (!f || !el || !el.row.isConnected) return;
+  const st = peerState[code] || {};
+  const on = isOnline(code);
+  el.dot.className = 'friend-avatar ' + (!on ? '' : (st.idle ? 'dot-idle' : 'dot-online'));
+  applyAvatar(el.dot, f.av, (f.hue != null) ? f.hue : 220, initials(f.nick || f.name));
+  el.sub.textContent = !on
+    ? '#' + f.code
+    : ((st.act || (st.idle ? 'Idle' : '') + (st.status ? ((st.idle ? ' · ' : '') + st.status) : '')) || '#' + f.code);
+  el.badge.textContent = unread[code] || '';
+  el.badge.classList.toggle('hidden', !unread[code]);
+}
+
+function updateAllFriendRows() {
+  for (const f of friends) friendDyn(f.code);
 }
 
 function renderFriends() {
   const list = $('friends-list');
   const chip = $('acq-count');
   if (chip) chip.textContent = friends.length ? String(friends.length) : '';
+  rowEls.clear();
   list.innerHTML = '';
   if (!friends.length) {
     const empty = document.createElement('li');
@@ -3473,6 +3496,8 @@ async function boot() {
       input.value = '';
       return;
     }
+    sendChat(txt);
+    input.value = '';
   });
 
   $('btn-return-call').onclick = () => showView('view-call');
@@ -3708,7 +3733,7 @@ async function boot() {
   $('set-ring').addEventListener('change', (e) => {
     const t = RINGTONES[e.target.value];
     if (!t || !t.steps.length) return;
-    let i = 0;
+updateAllFriendRows();
     const iv = setInterval(() => {
       if (i >= t.steps.length) { clearInterval(iv); return; }
       Sounds.blip(t.steps[i], t.dur, .09 * Sounds.vol());
@@ -3731,7 +3756,7 @@ async function boot() {
   maybePromptChangelog().catch(() => {});
 
   /* activity sharing + profile backup */
-  window.aero.onActivity((a) => { myActivity = String(a || ''); broadcastPresence(); renderFriends(); });
+  window.aero.onActivity((a) => { myActivity = String(a || ''); broadcastPresence(); updateAllFriendRows(); });
   const actCb = document.getElementById('set-activity');
   window.aero.getPrefs().then((pp) => { actCb.checked = !!pp.shareActivity; });
   actCb.addEventListener('change', async () => {
