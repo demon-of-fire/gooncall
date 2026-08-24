@@ -245,6 +245,9 @@ function createWindow() {
             console.log('E2E-A: chat ping sent');
             await new Promise(r => setTimeout(r, 1200));
             await wc.executeJavaScript(
+              "(async () => { const c=(chats['TESTBBBB']||[]).find(e=>e.me&&e.text==='ping-e2e'); if(!c) return 'noping'; sendTo('TESTBBBB',{t:'edit',id:c.id,text:'ping-e2e-edited'}); const e2=(chats['TESTBBBB']||[]).find(x=>x.id===c.id); if(e2){e2.text='ping-e2e-edited';saveChats();} return 'edited'; })()", true);
+            console.log('E2E-A: edit sent');
+            await wc.executeJavaScript(
               "(async () => { const cv=document.createElement('canvas'); cv.width=64; cv.height=64; const cx=cv.getContext('2d'); cx.fillStyle='#f0f'; cx.fillRect(0,0,64,64); const blob=await new Promise(r=>cv.toBlob(r,'image/png')); await sendAttachment('image', blob, 'test.png'); return 'sent'; })()", true);
             console.log('E2E-A: image sent');
             await new Promise(r => setTimeout(r, 2500));
@@ -285,6 +288,16 @@ function createWindow() {
               await new Promise(r2 => setTimeout(r2, 1000));
             }
             console.log(fileOk ? 'E2E-B: FILE_OK' : 'E2E-B: FILE_MISSING');
+
+            let editOk = false;
+            for (let i = 0; i < 15; i++) {
+              const r = await wc.executeJavaScript("(function(){ return typeof window.__editSyncFlag !== 'undefined' ? window.__editSyncFlag : false; })()", true);
+              if (r) { editOk = true; break; }
+              await new Promise(r2 => setTimeout(r2, 1000));
+            }
+            console.log(editOk ? 'E2E-B: EDIT_SYNC_OK' : 'E2E-B: EDIT_SYNC_MISSING');
+            const chatOk2 = await wc.executeJavaScript("(function(){ const c=(chats['TESTAAAA']||[]).find(e=>!e.me&&e.text==='ping-e2e-edited'); return c ? 'chat-edit-ok' : 'chat-edit-missing'; })()", true);
+            console.log('E2E-B:', chatOk2);
             let bigOk = false;
             for (let i = 0; i < 60; i++) {
               const r = await wc.executeJavaScript("(function(){ const c=(chats['TESTAAAA']||[]).find(e=>e.name==='big.bin'); return !!(c && c.diskPath && !c.xfer); })()", true);

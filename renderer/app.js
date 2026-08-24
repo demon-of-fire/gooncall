@@ -360,6 +360,7 @@ function safeSend(conn, msg) {
   try { if (conn && conn.open) conn.send(msg); } catch (err) { console.error('SEND FAIL:', err && err.message); }
 }
 
+let callStarting = false;
 let isIdle = false;
 let myActivity = '';
 let idleTm = null;
@@ -692,9 +693,9 @@ async function onData(conn, raw) {
       break;
     }
     case 'call-cancel': {
-      if (call && call.peerCode === code && call.state === 'incoming') {
+      if (call && call.peerCode === code && (call.state === 'incoming' || call.accepting)) {
         toast('Missed call from ' + displayName(code), '', true);
-        if (!qhActive()) window.aero.notify(displayName(code), 'Missed GoonCall');
+        if (!qhActive()) window.aero.notify(displayName(code), 'Missed GoonCall', code);
         teardownCall({ back: false, result: 'missed' });
       }
       break;
@@ -1882,8 +1883,12 @@ function sigSend(msg) {
 
 function startCall(code) {
   if (call && call.state !== 'idle') { toast('Already in a call', 'err'); return; }
+  if (callStarting) return;
+  callStarting = true;
 
   getMic().then((micStream) => {
+    callStarting = false;
+    if (call && call.state !== 'idle') { toast('Already in a call', 'err'); micStream.getTracks().forEach(t => t.stop()); return; }
     call = {
       state: 'outgoing',
       role: 'caller',
@@ -2002,19 +2007,20 @@ function handleInvite(conn, m) {
 }
 
 function acceptIncoming() {
-  if (!call || call.state !== 'incoming') return;
+  if (!call || call.state !== 'incoming' || call.accepting) return;
   const code = call.peerCode;
+  call.accepting = true;            // lock against double-click while mic loads
+  call.state = 'connecting';
   Sounds.stopRing();
   closeIncomingDialog();
 
   getMic().then((micStream) => {
-    if (!call || call.peerCode !== code || call.state !== 'incoming') {
+    if (!call || call.peerCode !== code || call.state !== 'connecting' || !call.accepting) {
       micStream.getTracks().forEach(t => t.stop());
       return;
     }
     call.micStream = micStream;
     sigSend({ t: 'call-accept' });
-    call.state = 'connecting';
     call.meta = { dir: 'in', result: null };
     call.startedAt = Date.now();
     buildPC();
@@ -2048,7 +2054,8 @@ function acceptIncoming() {
 }
 
 function declineIncoming() {
-  if (!call || call.state !== 'incoming') return;
+  if (!call || call.role !== 'callee') return;
+  if (call.state !== 'incoming' && !call.accepting) return;
   sigSend({ t: 'call-decline' });
   teardownCall({ back: false, result: 'declined' });
 }

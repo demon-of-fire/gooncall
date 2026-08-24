@@ -165,6 +165,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('clip-preview').onclick = previewCut;
   document.getElementById('clip-save').onclick = saveCutClip;
   document.getElementById('clip-discard').onclick = discardClip;
+  const bd = document.getElementById('dlg-board');
+  bd.addEventListener('close', () => {
+    assignMode = false;
+    pendingKeyTile = null;
+  });
 });
 
 
