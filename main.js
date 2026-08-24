@@ -78,7 +78,7 @@ function writeData(name, value) {
 }
 
 /* ---- app-level prefs owned by the main process ---- */
-const DEFAULT_PREFS = { closeToTray: true, hotkeyMute: false, startWithWindows: false, phoneRemote: false, phonePin: '' };
+const DEFAULT_PREFS = { closeToTray: true, hotkeyMute: false, startWithWindows: false, phoneRemote: false, phonePin: '', shareActivity: false };
 let prefs = Object.assign({}, DEFAULT_PREFS);
 
 function loadPrefs() {
@@ -484,6 +484,7 @@ function ensureBundledSounds() {
 
 ipcMain.handle('win:focus', () => showMainWindow());
 ipcMain.handle('app:quit', () => { forceQuit = true; app.quit(); });
+ipcMain.handle('app:relaunch', () => { forceQuit = true; app.relaunch(); app.exit(0); });
 ipcMain.handle('win:flash', (_e, on) => { try { win.flashFrame(!!on); } catch {} return true; });
 
 ipcMain.handle('win:title-menu', () => {
@@ -786,6 +787,7 @@ ipcMain.handle('prefs:set', (_e, key, value) => {
   savePrefs();
   if (key === 'startWithWindows') applyAutostart();
   if (key === 'hotkeyMute') applyHotkey();
+  if (key === 'shareActivity') { prefs.shareActivity = !!value; savePrefs(); if (prefs.shareActivity) startActivityWatch(); else { stopActivityWatch(); lastActivity = ''; } }
   if (key === 'phoneRemote') { prefs.phonePin = prefs.phonePin || String(Math.floor(1000 + Math.random() * 9000)); savePrefs(); if (prefs.phoneRemote) startRemoteServer(); else stopRemoteServer(); }
   if (key === 'closeToTray' && tray) {
     try { tray.setContextMenu(Menu.buildFromTemplate([
@@ -802,7 +804,111 @@ ipcMain.handle('prefs:set', (_e, key, value) => {
 
 // auto-approve mic (voice-only app); screen capture uses desktopCapturer via IPC
 
-const gotLock = (process.env.SMOKE_PEER || process.env.SMOKE_TEST) ? true : app.requestSingleInstanceLock();
+/* ---- activity detection: foreground app/game via PowerShell helper ---- */
+let actProc = null;
+let lastActivity = '';
+
+const ACTIVITY_MAP = {
+  chrome: 'Browsing the web', msedge: 'Browsing the web', firefox: 'Browsing the web', opera: 'Browsing the web', brave: 'Browsing the web',
+  spotify: 'Listening to Spotify', code: 'Coding', devenv: 'Coding', sublime_text: 'Coding', notepad: 'Writing notes', notepad3: 'Writing notes',
+  discord: 'In Discord (traitor)', telegram: 'On Telegram', whatsapp: 'On WhatsApp',
+  steam: 'In Steam', epicgameslauncher: 'In Epic launcher',
+  valorant: 'Playing VALORANT', 'client-win64-shipping': 'Playing LoL', leagueclient: 'In LoL client', leagueoflegends: 'Playing LoL',
+  cs2: 'Playing CS2', csgo: 'Playing CS:GO', fortnite: 'Playing Fortnite', minecraft: 'Playing Minecraft', javaw: 'Playing Minecraft',
+  robloxplayerbeta: 'Playing Roblox', rust: 'Playing Rust', gta5: 'Playing GTA V', gtavlauncher: 'GTA V',
+  apex_legends: 'Playing Apex', overwatch: 'Playing Overwatch', tslgame: 'Playing PUBG', eldenring: 'Playing Elden Ring',
+  vlc: 'Watching a video', mpv: 'Watching a video', potplayer: 'Watching a video', movies_tv: 'Watching a video',
+  explorer: 'Digging through files', cmd: 'In the terminal', powershell: 'In the terminal', windowsterminal: 'In the terminal',
+  gooncall: '', aerocall: ''
+};
+
+function friendlyActivity(proc, title) {
+  const p = String(proc || '').toLowerCase();
+  if (ACTIVITY_MAP[p] !== undefined) return ACTIVITY_MAP[p];
+  if (/game|shipping|win64|exe$/i.test(p)) return 'Playing ' + prettifyProc(p);
+  return prettifyProc(p);
+}
+function prettifyProc(p) {
+  return String(p || '').replace(/[_\.]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^./, c => c.toUpperCase()) || '';
+}
+
+function startActivityWatch() {
+  stopActivityWatch();
+  if (!prefs.shareActivity) return;
+  try {
+    const script = `
+      Add-Type @"
+      using System;using System.Runtime.InteropServices;public class GCF{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);[DllImport("user32.dll",CharSet=CharSet.Unicode)]public static extern int GetWindowText(IntPtr h,System.Text.StringBuilder t,int n);}
+"@
+      while ($true) {
+        $h = [GCF]::GetForegroundWindow()
+        $procId = 0
+        [GCF]::GetWindowThreadProcessId($h, [ref]$procId) | Out-Null
+        $pr = Get-Process -Id $procId -ErrorAction SilentlyContinue
+        $sb = New-Object System.Text.StringBuilder 512
+        [GCF]::GetWindowText($h, $sb, 512) | Out-Null
+        Write-Output ("{0}|{1}" -f $pr.ProcessName, $sb.ToString())
+        Start-Sleep -Seconds 8
+      }
+    `;
+    actProc = require('child_process').spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true });
+    let buf = '';
+    actProc.stdout.on('data', (d) => {
+      buf += d.toString();
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        const m = line.split('|');
+        if (m.length < 2) continue;
+        const act = friendlyActivity(m[0], m[1]);
+        if (act !== lastActivity) {
+          lastActivity = act;
+          if (win && !win.isDestroyed()) win.webContents.send('activity', act);
+        }
+      }
+    });
+    actProc.on('error', () => {});
+  } catch (e) { logLine('[activity] spawn fail: ' + String(e)); }
+}
+
+function stopActivityWatch() {
+  if (actProc) { try { actProc.kill(); } catch {} actProc = null; }
+  lastActivity = '';
+}
+
+/* ---- profile backup / restore ---- */
+ipcMain.handle('profile:export', async () => {
+  try {
+    const r = await dialog.showSaveDialog(win, {
+      title: 'Backup GoonCall profile',
+      defaultPath: 'gooncall-backup-' + new Date().toISOString().slice(0, 10) + '.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (r.canceled) return null;
+    const dump = {};
+    for (const f of ['identity', 'friends', 'chats', 'settings', 'calllog', 'unread', 'pendingin', 'dismissed', 'notes', 'drafts', 'funstats']) {
+      const v = readData(f, null);
+      if (v !== null) dump[f] = v;
+    }
+    fs.writeFileSync(r.filePath, JSON.stringify(dump, null, 2));
+    return r.filePath;
+  } catch { return null; }
+});
+
+ipcMain.handle('profile:import', async () => {
+  try {
+    const r = await dialog.showOpenDialog(win, {
+      title: 'Restore GoonCall profile',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (r.canceled || !r.filePaths.length) return null;
+    const dump = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8'));
+    if (!dump.identity || !dump.friends) throw new Error('not a profile backup');
+    for (const key of Object.keys(dump)) writeData(key, dump[key]);
+    return r.filePaths[0];
+  } catch (e) { logLine('[import] ' + String(e)); return 'ERROR'; }
+});
 
 /* ---- Phone Remote: tiny LAN control page so your phone drives the soundboard ---- */
 const REMOTE_PORT = 5657;
@@ -879,6 +985,11 @@ function stopRemoteServer() {
   if (remoteServer) { try { remoteServer.close(); } catch {} remoteServer = null; }
 }
 
+function stopRemoteServer() {
+  if (remoteServer) { try { remoteServer.close(); } catch {} remoteServer = null; }
+}
+
+const gotLock = (process.env.SMOKE_PEER || process.env.SMOKE_TEST) ? true : app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
@@ -892,6 +1003,7 @@ if (!gotLock) {
       ['media', 'audioCapture'].includes(permission));
     loadPrefs();
     if (prefs.phoneRemote) startRemoteServer();
+    startActivityWatch();
     ensureBundledSounds();
     applyAutostart();
     createWindow();
@@ -902,7 +1014,8 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     forceQuit = true;
-    try { globalShortcut.unregisterAll(); } catch {}
+    stopActivityWatch();
+  try { globalShortcut.unregisterAll(); } catch {}
   stopRemoteServer();
     for (const [, w] of xferWrites) { try { w.ws.destroy(); } catch {} }
     xferWrites.clear();

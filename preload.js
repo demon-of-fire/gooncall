@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('aero', {
   maximize: () => ipcRenderer.invoke('win:maximize'),
   close: () => ipcRenderer.invoke('win:close'),
   quitApp: () => ipcRenderer.invoke('app:quit'),
+  relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
   titleMenu: () => ipcRenderer.invoke('win:title-menu'),
   focus: () => ipcRenderer.invoke('win:focus'),
   flash: (on) => ipcRenderer.invoke('win:flash', on),
@@ -35,6 +36,9 @@ contextBridge.exposeInMainWorld('aero', {
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, s) => cb(s)),
   onRemote: (cb) => ipcRenderer.on('remote', (_e, c) => cb(c)),
+  onActivity: (cb) => ipcRenderer.on('activity', (_e, a) => cb(a)),
+  exportProfile: () => ipcRenderer.invoke('profile:export'),
+  importProfile: () => ipcRenderer.invoke('profile:import'),
 
   xferBegin: (id, name) => ipcRenderer.invoke('xfer:begin', id, name),
   xferAppend: (id, chunk) => ipcRenderer.invoke('xfer:append', id, chunk),

@@ -170,6 +170,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 /* ---- soundboard UI ---- */
+
+let assignMode = false;
+let pendingKeyTile = null;
+function bindTileKey(name) {
+  pendingKeyTile = name;
+  toast('Press any key to bind to: ' + name.replace(/\\.[^.]+$/, '') + ' (Esc cancels)');
+}
+
 const Board = {
   files: [],
   async refresh() {
@@ -187,13 +195,18 @@ const Board = {
       const tile = document.createElement('button');
       tile.className = 'snd-tile';
       tile.title = f.name;
-      const key = i < 9 ? String(i + 1) : i === 9 ? '0' : '';
-    tile.innerHTML =
+      let key = i < 9 ? String(i + 1) : i === 9 ? '0' : '';
+      const overrides = (typeof settings !== 'undefined' && settings.boardKeys) || {};
+      for (const [nm, kk] of Object.entries(overrides)) {
+        if (nm === f.name && kk) { key = kk; break; }
+      }
+      tile.innerHTML =
       '<span class="snd-key">' + key + '</span>' +
       '<span class="snd-play">&#x266A;</span>' +
       '<span class="snd-name">' + escapeHtml(f.name.replace(/\.[^.]+$/, '')) + '</span>' +
       '<span class="snd-del" title="Delete">&#x2715;</span>';
     tile.title = 'Click: play into call · Shift+click: play on their speakers';
+    if (typeof assignMode !== 'undefined' && assignMode) tile.title += ' - press a key to bind';
     tile.onclick = (e) => {
       if (e.target.classList.contains('snd-del')) {
         window.aero.deleteSound(f.name).then(() => this.refresh());
@@ -204,6 +217,10 @@ const Board = {
         // prank mode: fires on their machine's speakers
         sigSend({ t: 'prank', name: f.name });
         toast('Sent to ' + displayName(call.peerCode) + "'s speakers 😈");
+        return;
+      }
+      if (typeof assignMode !== 'undefined' && assignMode) {
+        bindTileKey(f.name);
         return;
       }
       const route = call ? 'into the call' : 'locally (no active call)';

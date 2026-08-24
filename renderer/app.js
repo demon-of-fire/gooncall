@@ -361,12 +361,18 @@ function safeSend(conn, msg) {
 }
 
 let isIdle = false;
+let myActivity = '';
 let idleTm = null;
 let typingTm = null;
 let typingSendTm = 0;
 
+function currentAct() {
+  if (typeof watch !== 'undefined' && watch) return '\uD83D\uDCFA Watching together';
+  return myActivity || '';
+}
+
 function helloPayload() {
-  return { t: 'hello', name: identity.name, hue: identity.hue, status: identity.status || '', idle: isIdle, avv: identity.avv || 0 };
+  return { t: 'hello', name: identity.name, hue: identity.hue, status: identity.status || '', idle: isIdle, avv: identity.avv || 0, act: currentAct() };
 }
 
 /* ---------- avatars ---------- */
@@ -405,7 +411,7 @@ function downscaleAvatar(file) {
 }
 
 function broadcastPresence() {
-  const msg = { t: 'presence', idle: isIdle, status: identity.status || '' };
+  const msg = { t: 'presence', idle: isIdle, status: identity.status || '', act: currentAct() };
   for (const c of conns.values()) safeSend(c, msg);
 }
 
@@ -446,7 +452,7 @@ async function onData(conn, raw) {
 
   switch (m.t) {
     case 'hello': {
-      peerState[code] = { idle: !!m.idle, status: String(m.status || '').slice(0, 80) };
+      peerState[code] = { idle: !!m.idle, status: String(m.status || '').slice(0, 80), act: String(m.act || '').slice(0, 60) };
       const helloF = friendByCode(code);
       if (m.avv && m.avv !== (helloF && helloF.avv)) requestAvatar(code);
       const f = friendByCode(code);
@@ -472,7 +478,7 @@ async function onData(conn, raw) {
     }
 
     case 'presence': {
-      peerState[code] = { idle: !!m.idle, status: String(m.status || '').slice(0, 80) };
+      peerState[code] = { idle: !!m.idle, status: String(m.status || '').slice(0, 80), act: String(m.act || '').slice(0, 60) };
       renderFriends();
       if (chatOpen === code) renderChatStatus();
       break;
@@ -1741,7 +1747,7 @@ function friendRow(f) {
   sub.className = 'friend-sub';
   sub.textContent = !on
     ? '#' + f.code
-    : (st.idle ? 'Idle' : '') + (st.status ? ((st.idle ? ' · ' : '') + st.status) : (st.idle ? '' : '# ' + f.code));
+    : (st.act || (st.idle ? 'Idle' : '') + (st.status ? ((st.idle ? ' · ' : '') + st.status) : '')) || '#' + f.code;
   meta.appendChild(nm); meta.appendChild(sub);
 
   li.appendChild(av); li.appendChild(meta);
@@ -3017,6 +3023,21 @@ window.addEventListener('keydown', (e) => {
   if (typingInField()) return;
 
   const bd = $('dlg-board');
+  if (bd && bd.open && typeof pendingKeyTile !== 'undefined' && pendingKeyTile) {
+    e.preventDefault();
+    if (e.key === 'Escape') { pendingKeyTile = null; Board.refresh(); return; }
+    if (!settings.boardKeys) settings.boardKeys = {};
+    settings.boardKeys[pendingKeyTile] = normKeyToken(e);
+    saveSettingsData();
+    toast('Bound "' + normKeyToken(e) + '" to clip', 'ok');
+    pendingKeyTile = null;
+    Board.renderGrid();
+    return;
+  }
+  if (bd && bd.open) {
+    const byOverride = Object.entries(settings.boardKeys || {}).find(([, kk]) => kk.toLowerCase() === normKeyToken(e).toLowerCase());
+    if (byOverride) { e.preventDefault(); playSoundFile(byOverride[0]); return; }
+  }
   if (bd && bd.open && /^[0-9]$/.test(e.key)) {
     e.preventDefault();
     const idx = e.key === '0' ? 9 : Number(e.key) - 1;
@@ -3217,10 +3238,11 @@ function showProfile(code) {
   applyAvatar($('pf-avatar'), img, hue, initials(name));
   $('pf-name').textContent = name;
   const on = me ? peerOnline : isOnline(code);
+  const pst = peerState[code] || {};
   $('pf-statusline').textContent = me
     ? (identity.status || (peerOnline ? 'online' : 'connecting'))
-    : (!on ? 'offline' : (peerState[code] && peerState[code].idle ? 'idle' : 'online')) +
-      ((peerState[code] && peerState[code].status) ? ' · ' + peerState[code].status : '');
+    : (!on ? 'offline' : (pst.idle ? 'idle' : 'online')) +
+      ((pst.act || pst.status) ? ' · ' + (pst.act || pst.status) : '');
   const noteEl = $('pf-note');
   if (!me && f && f.note) { noteEl.textContent = f.note; noteEl.classList.remove('hidden'); }
   else noteEl.classList.add('hidden');
@@ -3551,6 +3573,24 @@ async function boot() {
   $('btn-cl-close').onclick = () => { try { $('dlg-changelog').close(); } catch {} };
   $('btn-whatsnew').onclick = showChangelog;
   maybePromptChangelog().catch(() => {});
+
+  /* activity sharing + profile backup */
+  window.aero.onActivity((a) => { myActivity = String(a || ''); broadcastPresence(); renderFriends(); });
+  const actCb = document.getElementById('set-activity');
+  window.aero.getPrefs().then((pp) => { actCb.checked = !!pp.shareActivity; });
+  actCb.addEventListener('change', async () => {
+    await window.aero.setPref('shareActivity', actCb.checked);
+    toast(actCb.checked ? 'Activity sharing ON' : 'Activity sharing OFF', 'ok');
+  });
+  document.getElementById('btn-profile-backup').onclick = async () => {
+    const p2 = await window.aero.exportProfile();
+    if (p2) toast('Backup saved: ' + p2.split('\\\\').pop(), 'ok'); else if (p2 === null) toast('Backup cancelled');
+  };
+  document.getElementById('btn-profile-restore').onclick = async () => {
+    const r3 = await window.aero.importProfile();
+    if (r3 && r3 !== 'ERROR') { toast('Profile restored - restarting', 'ok'); setTimeout(() => window.aero.relaunchApp(), 1200); }
+    else if (r3 === 'ERROR') toast('Restore failed - invalid file?', 'err');
+  };
 
   /* phone remote settings */
   const phoneCb = $('set-phone');
