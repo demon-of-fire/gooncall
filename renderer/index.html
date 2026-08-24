@@ -34,7 +34,7 @@
       </section>
 
       <nav aria-label="Acquaintances">
-        <h2 class="side-label">Acquaintances</h2>
+        <h2 class="side-label">Acquaintances <span id="acq-count" class="count-chip"></span></h2>
         <ul id="friends-list" role="list"></ul>
       </nav>
 
@@ -82,10 +82,13 @@
           <div id="drop-hint" class="drop-hint hidden">Drop files to send</div>
         </div>
         <form id="chat-form" class="chat-form">
-          <input id="chat-input" type="text" placeholder="Message&#8230;" autocomplete="off" aria-label="Message" />
-          <button type="button" id="btn-emoji" class="voice-btn" aria-label="Emoji" title="Emoji">&#x1F60A;</button>
-          <button type="button" id="btn-voice" class="voice-btn" aria-label="Record voice message" title="Record voice message">&#x1F3A4;</button>
-          <button type="submit">Send</button>
+          <div class="chat-pill">
+            <button type="button" id="btn-attach" class="pill-btn" aria-label="Attach file" title="Attach file">&#x1F4CE;</button>
+            <input id="chat-input" type="text" placeholder="Message&#8230;" autocomplete="off" aria-label="Message" />
+            <button type="button" id="btn-emoji" class="pill-btn" aria-label="Emoji" title="Emoji">&#x1F60A;</button>
+            <button type="button" id="btn-voice" class="pill-btn" aria-label="Record voice message" title="Record voice message">&#x1F3A4;</button>
+            <button type="submit" class="pill-send">Send</button>
+          </div>
         </form>
         <div id="emoji-pop" class="emoji-pop hidden" role="menu"></div>
       </section>
@@ -282,7 +285,7 @@
   </dialog>
 
   <dialog id="dlg-board" aria-modal="true" aria-labelledby="board-title">
-    <h2 id="board-title">&#x1F3B5; Soundboard <span class="board-hint">(keys 1&ndash;9, 0 play clips into the call)</span></h2>
+    <h2 id="board-title">&#x1F3B5; Soundboard <span class="board-hint">(unlimited clips &mdash; first 10 get number keys)</span></h2>
     <div id="board-grid" class="board-grid"></div>
     <div class="board-foot">
       <label><input type="checkbox" id="board-monitor" checked /> Hear clips locally</label>

@@ -149,10 +149,18 @@ dialog h2 { text-align:center; }
 .msg .meta { font-size:10px; opacity:.65; margin-bottom:2px; }
 .chat-empty { color:var(--txt-dim); font-size:12.5px; text-align:center; margin-top:20px; padding:0 20px; }
 
-.chat-form { display:flex; gap:8px; padding:12px; border-top:1px solid var(--line); }
-#chat-input { flex:1; background:var(--bg0); border:1px solid var(--line); border-radius:10px; padding:9px 12px; font-size:13.5px; outline:none; }
-#chat-input:focus { border-color:var(--acc); }
-.chat-form button { padding:0 16px; border-radius:10px; font-weight:700; background:linear-gradient(90deg,var(--acc),var(--acc2)); color:#fff; }
+.chat-form { padding:10px 12px 12px; }
+.chat-pill { display:flex; align-items:center; gap:4px; background:var(--bg2); border:1px solid var(--line); border-radius:14px; padding:5px 6px 5px 8px; transition:border-color .15s; }
+.chat-pill:focus-within { border-color:var(--acc); }
+#chat-input { flex:1; background:transparent; border:none; border-radius:0; padding:8px 6px; font-size:13.5px; outline:none; }
+.pill-btn { width:32px; height:32px; border-radius:9px; font-size:15px; color:var(--txt-dim); display:grid; place-items:center; flex-shrink:0; transition:all .12s; }
+.pill-btn:hover { color:var(--txt); background:rgba(255,255,255,.08); }
+.pill-send { height:32px; padding:0 16px; border-radius:10px; font-weight:800; font-size:12.5px; background:linear-gradient(90deg,var(--acc),var(--acc2)); color:#fff; flex-shrink:0; }
+.pill-send:hover { filter:brightness(1.15); }
+.voice-btn.rec { color:#fff !important; background:var(--bad) !important; animation:typeblink 1s infinite; }
+
+/* friends count chip */
+.side-label .count-chip { float:right; font-size:10px; background:var(--bg3); border-radius:99px; padding:1px 7px; color:var(--txt-dim); }
 
 /* call */
 #view-call { flex-direction:column; }

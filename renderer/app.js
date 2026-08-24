@@ -1516,14 +1516,14 @@ const Board = {
     const grid = $('board-grid');
     grid.innerHTML = '';
     if (!this.files.length) {
-      grid.innerHTML = '<div class="snd-empty">No sounds yet.<br>Drop files into your sounds folder or click <b>+ Add sounds</b>.</div>';
+      grid.innerHTML = '<div class="snd-empty">No sounds yet.<br>Record with <b>Record mic</b>, click <b>+ Add sounds</b>, or drop files into the sounds folder.<br>Unlimited clips &mdash; first 10 get hotkeys.</div>';
       return;
     }
     this.files.forEach((f, i) => {
       const tile = document.createElement('button');
       tile.className = 'snd-tile';
       tile.title = f.name;
-      const key = i < 9 ? String(i + 1) : i === 9 ? '0' : '+';
+      const key = i < 9 ? String(i + 1) : i === 9 ? '0' : '';
     tile.innerHTML =
       '<span class="snd-key">' + key + '</span>' +
       '<span class="snd-play">&#x266A;</span>' +
@@ -2453,6 +2453,8 @@ function renderConnState() {
 
 function renderFriends() {
   const list = $('friends-list');
+  const chip = $('acq-count');
+  if (chip) chip.textContent = friends.length ? String(friends.length) : '';
   list.innerHTML = '';
   if (!friends.length) {
     const empty = document.createElement('li');
@@ -3282,6 +3284,20 @@ async function boot() {
   $('btn-hangup').onclick = hangUp;
 
   $('btn-voice').onclick = toggleVoiceRec;
+  $('btn-attach').onclick = async () => {
+    if (!chatOpen) return;
+    const picked = await window.aero.pickFiles();
+    for (const f of (picked || [])) {
+      try {
+        const ab = await window.aero.readFile(f.path);
+        if (!ab) continue;
+        const ext = (f.name.match(/\.([^.]+)$/) || [,''])[1].toLowerCase();
+        const mimeMap = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp', webm:'video/webm', mp4:'video/mp4', txt:'text/plain' };
+        const kind = ['png','jpg','jpeg','gif','webp'].includes(ext) ? 'image' : 'file';
+        sendAttachment(kind, new Blob([ab], { type: mimeMap[ext] || 'application/octet-stream' }), f.name);
+      } catch { toast('Could not read ' + f.name, 'err'); }
+    }
+  };
   $('btn-reply-cancel').onclick = cancelReply;
   $('chat-input').addEventListener('input', () => {
     sendTyping();

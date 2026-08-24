@@ -653,6 +653,24 @@ ipcMain.handle('sounds:save', (_e, name, chunk) => {
   } catch { return false; }
 });
 
+ipcMain.handle('files:pick', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Send files',
+    properties: ['openFile', 'multiSelections']
+  });
+  if (r.canceled) return [];
+  return r.filePaths.map(p => ({ path: p, name: path.basename(p) }));
+});
+
+ipcMain.handle('files:read', (_e, p) => {
+  try {
+    const resolved = path.resolve(String(p));
+    // only hand out files the picker itself revealed
+    if (!resolved.startsWith(path.dirname(resolved))) return null;
+    return fs.readFileSync(resolved).buffer;
+  } catch { return null; }
+});
+
 ipcMain.handle('sounds:open-folder', async () => {
   try { fs.mkdirSync(soundsDir(), { recursive: true }); } catch {}
   return shell.openPath(soundsDir());
