@@ -1,5 +1,11 @@
 # GoonCall Changelog
 
+## v1.4.1 - Soundboard Studio
+- **Recording countdown** (3-2-1) so you never miss the start of a sound
+- **Live timer** while recording
+- **Clip review editor** - preview, set start/end markers, trim, then save as clean WAV or discard
+- Record PC audio button added last build now flows through the same editor
+
 ## v1.4.0 - Look at you now
 - **Custom avatars** - set a real image in Settings; syncs to your friend automatically
 - **Profile cards** - click someones name/avatar for their card: avatar, status, note, message + call stats

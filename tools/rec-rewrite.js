@@ -1,11 +1,12 @@
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Rewrites toggleBoardRec with countdown/timer + adds clip editor pipeline.
+const fs = require('fs');
+let s = fs.readFileSync('renderer/js/board.js', 'utf8');
 
-'use strict';
-/* Soundboard module — Board UI, recording, pack export/import.
-   Depends on globals from app.js: settings, chats, call, chatOpen, mix,
-   duckMic, playSoundFile, u8ToB64, toast, displayName, sigSend. */
+const START = s.indexOf('async function toggleBoardRec(');
+const END = s.length;
+if (START < 0 || END < 0 || END < START) { console.error('anchors missing'); process.exit(1); }
 
-async function toggleBoardRec(mode) {
+const replacement = `async function toggleBoardRec(mode) {
   mode = mode || 'mic';
   const btnId = mode === 'pc' ? 'btn-board-rec-pc' : 'btn-board-rec';
   const btn = document.getElementById(btnId);
@@ -47,14 +48,14 @@ async function toggleBoardRec(mode) {
     clearInterval(recTickIv);
     stream.getTracks().forEach((t) => t.stop());
     btn.classList.remove('rec');
-    btn.textContent = mode === 'pc' ? '\u25CF PC' : '\u25CF Mic';
+    btn.textContent = mode === 'pc' ? '\\u25CF PC' : '\\u25CF Mic';
     const blob = new Blob(chunks, { type: 'audio/webm' });
     if (blob.size < 1500) { toast('Too short - nothing recorded'); return; }
     openClipEditor(blob, mode);
   };
   boardRec.start();
   recTickIv = setInterval(() => {
-    btn.textContent = '\u25A0 REC ' + ((Date.now() - recT0) / 1000).toFixed(0) + 's';
+    btn.textContent = '\\u25A0 REC ' + ((Date.now() - recT0) / 1000).toFixed(0) + 's';
   }, 300);
 }
 
@@ -167,59 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('clip-discard').onclick = discardClip;
 });
 
+`;
 
-
-/* ---- soundboard UI ---- */
-const Board = {
-  files: [],
-  async refresh() {
-    this.files = (await window.aero.listSounds()) || [];
-    this.renderGrid();
-  },
-  renderGrid() {
-    const grid = $('board-grid');
-    grid.innerHTML = '';
-    if (!this.files.length) {
-      grid.innerHTML = '<div class="snd-empty">No sounds yet.<br>Record with <b>Record mic</b>, click <b>+ Add sounds</b>, or drop files into the sounds folder.<br>Unlimited clips &mdash; first 10 get hotkeys.</div>';
-      return;
-    }
-    this.files.forEach((f, i) => {
-      const tile = document.createElement('button');
-      tile.className = 'snd-tile';
-      tile.title = f.name;
-      const key = i < 9 ? String(i + 1) : i === 9 ? '0' : '';
-    tile.innerHTML =
-      '<span class="snd-key">' + key + '</span>' +
-      '<span class="snd-play">&#x266A;</span>' +
-      '<span class="snd-name">' + escapeHtml(f.name.replace(/\.[^.]+$/, '')) + '</span>' +
-      '<span class="snd-del" title="Delete">&#x2715;</span>';
-    tile.title = 'Click: play into call · Shift+click: play on their speakers';
-    tile.onclick = (e) => {
-      if (e.target.classList.contains('snd-del')) {
-        window.aero.deleteSound(f.name).then(() => this.refresh());
-        toast('Deleted ' + f.name);
-        return;
-      }
-      if (e.shiftKey && call) {
-        // prank mode: fires on their machine's speakers
-        sigSend({ t: 'prank', name: f.name });
-        toast('Sent to ' + displayName(call.peerCode) + "'s speakers 😈");
-        return;
-      }
-      const route = call ? 'into the call' : 'locally (no active call)';
-      playSoundFile(f.name).then(r => { if (r === 'missing') toast('Clip file missing', 'err'); });
-      void route;
-    };
-    grid.appendChild(tile);
-  });
-  },
-  async open() {
-    await this.refresh();
-    $('board-vol').value = settings.boardVol;
-    $('board-monitor').checked = !!settings.boardMonitor;
-    const dlg = $('dlg-board');
-    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
-  }
-};
-
-
+fs.writeFileSync('renderer/js/board.js', s.slice(0, START) + replacement + '\n');
+console.log('board.js recording rewritten');

@@ -375,6 +375,24 @@
     </div>
   </dialog>
 
+  <dialog id="dlg-clipedit" aria-modal="true" aria-labelledby="ce-title">
+    <h2 id="ce-title">Review clip</h2>
+    <div class="clip-row"><audio id="clip-audio" controls></audio></div>
+    <div class="clip-times">
+      <button id="clip-set-start" class="ghost-btn small-btn" type="button">Set start</button>
+      <span class="mono" id="clip-start-lbl">0.00s</span>
+      <span class="status">to</span>
+      <span class="mono" id="clip-end-lbl">0.00s</span>
+      <button id="clip-set-end" class="ghost-btn small-btn" type="button">Set end</button>
+    </div>
+    <p class="set-hint">Play the clip, pause where you want a marker, hit Set.</p>
+    <div class="dialog-actions">
+      <button id="clip-discard" class="ghost-btn danger-btn" type="button">Discard</button>
+      <button id="clip-preview" class="ghost-btn" type="button">Preview cut</button>
+      <button id="clip-save" class="primary-btn" type="button">Save to board</button>
+    </div>
+  </dialog>
+
   <dialog id="dlg-changelog" aria-modal="true" aria-labelledby="cl-title">
     <h2 id="cl-title">What&#8217;s new in GoonCall</h2>
     <div id="changelog-body" class="changelog-body"></div>

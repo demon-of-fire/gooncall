@@ -423,6 +423,14 @@ body.nudged #app { animation:nudgeshake .5s ease; }
 #wb-canvas.hidden { display:none !important; }
 .onb-step { display:flex; gap:14px; align-items:flex-start; margin-bottom:16px; }
 .onb-num { width:30px; height:30px; border-radius:50%; background:var(--acc); color:#fff; font-weight:800; display:grid; place-items:center; flex-shrink:0; font-size:14px; }
+/* clip editor + countdown */
+#rec-overlay { position:fixed; inset:0; z-index:400; background:rgba(0,0,0,.72); display:flex; align-items:center; justify-content:center; }
+.rec-num { font-size:120px; font-weight:900; color:#fff; text-shadow:0 0 40px rgba(88,101,242,.9); animation:recpop .7s ease; display:block; text-align:center; }
+@keyframes recpop { from { transform:scale(1.8); opacity:0; } }
+.clip-row { margin-bottom:10px; }
+.clip-row audio { width:100%; }
+.clip-times { display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+
 /* notes pad */
 .notes-panel { position:absolute; right:20px; top:70px; bottom:96px; width:min(320px,38%); z-index:6; background:var(--bg1); border-radius:14px; padding:10px; box-shadow:0 12px 34px rgba(0,0,0,.4); }
 .notes-panel.hidden { display:none !important; }
