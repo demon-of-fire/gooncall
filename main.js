@@ -78,7 +78,7 @@ function writeData(name, value) {
 }
 
 /* ---- app-level prefs owned by the main process ---- */
-const DEFAULT_PREFS = { closeToTray: true, hotkeyMute: false, startWithWindows: false, phoneRemote: false, phonePin: '', shareActivity: false };
+const DEFAULT_PREFS = { closeToTray: true, hotkeyMute: false, startWithWindows: false, phoneRemote: false, phonePin: '', shareActivity: false, boardGlobalKeys: false };
 let prefs = Object.assign({}, DEFAULT_PREFS);
 
 function loadPrefs() {
@@ -485,6 +485,19 @@ function ensureBundledSounds() {
 ipcMain.handle('win:focus', () => showMainWindow());
 ipcMain.handle('app:quit', () => { forceQuit = true; app.quit(); });
 ipcMain.handle('app:relaunch', () => { forceQuit = true; app.relaunch(); app.exit(0); });
+
+ipcMain.handle('chat:export', async (_e, html, name) => {
+  try {
+    const r = await dialog.showSaveDialog(win, {
+      title: 'Export chat',
+      defaultPath: String(name || 'chat').replace(/[\\/:*?"<>|]/g, '_') + '.html',
+      filters: [{ name: 'HTML', extensions: ['html'] }]
+    });
+    if (r.canceled) return null;
+    fs.writeFileSync(r.filePath, String(html || ''), 'utf8');
+    return r.filePath;
+  } catch { return null; }
+});
 ipcMain.handle('win:flash', (_e, on) => { try { win.flashFrame(!!on); } catch {} return true; });
 
 ipcMain.handle('win:title-menu', () => {
@@ -807,7 +820,9 @@ ipcMain.handle('prefs:set', (_e, key, value) => {
   savePrefs();
   if (key === 'startWithWindows') applyAutostart();
   if (key === 'hotkeyMute') applyHotkey();
+  if (key === 'boardGlobalKeys') { refreshBoardShortcuts(); }
   if (key === 'shareActivity') { prefs.shareActivity = !!value; savePrefs(); if (prefs.shareActivity) startActivityWatch(); else { stopActivityWatch(); lastActivity = ''; } }
+  if (key === 'boardGlobalKeys') refreshBoardShortcuts();
   if (key === 'phoneRemote') { prefs.phonePin = prefs.phonePin || String(Math.floor(1000 + Math.random() * 9000)); savePrefs(); if (prefs.phoneRemote) startRemoteServer(); else stopRemoteServer(); }
   if (key === 'closeToTray' && tray) {
     try { tray.setContextMenu(Menu.buildFromTemplate([
@@ -842,8 +857,23 @@ const ACTIVITY_MAP = {
   gooncall: '', aerocall: ''
 };
 
+function musicTitle(title) {
+  let s = String(title || '').trim();
+  s = s.replace(/\s*[-\u2013\u2014]\s*(YouTube Music|Spotify|Spotify Premium|Free)\s*$/i, '');
+  if (!s || /^spotify$/i.test(s)) return '';
+  return 'Listening to ' + s.slice(0, 60);
+}
+
 function friendlyActivity(proc, title) {
   const p = String(proc || '').toLowerCase();
+  const tl = String(title || '');
+  if (p === 'spotify') {
+    const m = musicTitle(tl.replace(/ - Spotify$/i, ''));
+    if (m) return m.replace('Listening to', 'Listening');
+  }
+  if ((p === 'chrome' || p === 'msedge' || p === 'firefox' || p === 'brave' || p === 'opera') && /youtube music/i.test(tl)) {
+    return musicTitle(tl.replace(/\s*[-\u2013]\s*YouTube Music\s*$/i, ''));
+  }
   if (ACTIVITY_MAP[p] !== undefined) return ACTIVITY_MAP[p];
   if (/game|shipping|win64|exe$/i.test(p)) return 'Playing ' + prettifyProc(p);
   return prettifyProc(p);
@@ -894,6 +924,32 @@ function startActivityWatch() {
 function stopActivityWatch() {
   if (actProc) { try { actProc.kill(); } catch {} actProc = null; }
   lastActivity = '';
+}
+
+/* ---- global soundboard keys: Ctrl+Alt+1..0 fire the first ten clips ---- */
+function boardClipNames() {
+  try {
+    return fs.readdirSync(soundsDir())
+      .filter(f => /\.(mp3|wav|ogg|m4a|flac|webm)$/i.test(f))
+      .sort((a, b) => a.localeCompare(b));
+  } catch { return []; }
+}
+
+function refreshBoardShortcuts() {
+  const names = boardClipNames().slice(0, 10);
+  try {
+    for (let i = 0; i < 10; i++) globalShortcut.unregister('Ctrl+Alt+' + (i === 9 ? '0' : String(i + 1)));
+  } catch {}
+  if (!prefs.boardGlobalKeys || !prefs.phoneRemote && false) {}
+  if (!prefs.boardGlobalKeys) return;
+  names.forEach((name, idx) => {
+    const combo = 'Ctrl+Alt+' + (idx === 9 ? '0' : String(idx + 1));
+    try {
+      globalShortcut.register(combo, () => {
+        if (win && !win.isDestroyed()) win.webContents.send('remote', { a: 'play', name });
+      });
+    } catch {}
+  });
 }
 
 /* ---- profile backup / restore ---- */
@@ -1024,6 +1080,7 @@ if (!gotLock) {
     loadPrefs();
     if (prefs.phoneRemote) startRemoteServer();
     startActivityWatch();
+    refreshBoardShortcuts();
     ensureBundledSounds();
     applyAutostart();
     createWindow();

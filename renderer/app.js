@@ -547,6 +547,18 @@ async function onData(conn, raw) {
       break;
     }
 
+    case 'edit': {
+      const eid = String(m.id || '');
+      const eEntry = (chats[code] || []).find(c => c.id === eid && !c.me);
+      if (eEntry && typeof m.text === 'string') {
+        eEntry.text = String(m.text).slice(0, 4000);
+        eEntry.edited = true;
+        saveChats();
+        if (chatOpen === code) renderChatLog(code);
+      }
+      break;
+    }
+
     case 'avatar-req': {
       if (identity.avatar) safeSend(conn, { t: 'avatar', b64: identity.avatar, v: identity.avv || 1 });
       break;
@@ -720,6 +732,7 @@ async function onData(conn, raw) {
 
 /* ============ chat ============ */
 let chatOpen = null;
+let replyTarget = null;
 let msgSeq = 0;
 
 function newMsgId() { return Date.now().toString(36) + '-' + (msgSeq++).toString(36) + '-' + Math.floor(Math.random() * 1e6).toString(36); }
@@ -1006,7 +1019,14 @@ async function recvXferEnd(conn, m) {
 }
 
 
-let replyTarget = null;
+function startEdit(code, entry) {
+  if (chatOpen !== code || !entry.me || entry.kind) return;
+  pendingEditId = entry.id;
+  document.getElementById('chat-input').value = entry.text || '';
+  document.getElementById('chat-input').focus();
+  toast('Editing - Enter to save, Esc to cancel');
+}
+let pendingEditId = null;
 
 /* ---- messaging v3 state ---- */
 let unreadCutId = null;
@@ -1141,7 +1161,7 @@ function appendMsgContent(main, code, it, d, showMeta) {
     const tm = document.createElement('span');
     tm.className = 'msg-time';
     tm.title = d.toLocaleString();
-    tm.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    tm.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + (it.edited ? ' \u00b7 edited' : '');
     head.appendChild(author); head.appendChild(tm);
     main.appendChild(head);
   } else if (it.replyTo && it.replyTo.text) {
@@ -2355,6 +2375,11 @@ function startTimer() {
 }
 function stopTimer() { if (timerIv) { clearInterval(timerIv); timerIv = null; } }
 
+function applyCallVolume() {
+  const ra = document.getElementById('remote-audio');
+  if (ra) ra.volume = Math.max(0, Math.min(1, ((Number(settings.callVol) || 100)) / 100));
+}
+
 function toggleMute() {
   if (!call || !call.micStream) return;
   const track = call.micStream.getAudioTracks()[0];
@@ -2632,6 +2657,9 @@ function openSettings() {
   $('set-noise').checked = settings.noise;
   $('set-agc').checked = settings.agc;
   $('set-notifs').checked = settings.notifyMsgs !== false;
+  $('set-callvol').value = settings.callVol;
+  $('callvol-val').textContent = settings.callVol;
+  $('set-ptt').checked = !!settings.ptt;
   $('set-ringvol').value = settings.ringVol;
   $('ringvol-val').textContent = settings.ringVol;
   $('set-gate').value = settings.gate;
@@ -2807,6 +2835,8 @@ function saveSettings() {
   settings.noise = $('set-noise').checked;
   settings.agc = $('set-agc').checked;
   settings.notifyMsgs = $('set-notifs').checked;
+  settings.ptt = $('set-ptt').checked;
+  settings.callVol = Number($('set-callvol').value) || 100;
   settings.ringVol = Number($('set-ringvol').value);
   settings.gate = Number($('set-gate').value) || 0;
   if (RINGTONES[$('set-ring').value]) settings.ring = $('set-ring').value;
@@ -2892,6 +2922,7 @@ const SC_DEFAULTS = {
   quitApp: 'Ctrl+F1',
   searchChat: 'Ctrl+F',
   snip: 'Ctrl+Shift+A',
+  stopSounds: 'Ctrl+Shift+O',
   switcher: 'Ctrl+K',
   settings: 'Ctrl+,'
 };
@@ -3020,6 +3051,18 @@ window.addEventListener('keydown', (e) => {
 
   if (comboMatches(e, getBind('settings'))) { e.preventDefault(); openSettings(); return; }
 
+  if (settings.ptt && e.code === 'Space' && !e.repeat && call && call.state !== 'incoming' && !$('dlg-incoming').open) {
+    e.preventDefault();
+    if (!pttHeld) {
+      pttHeld = true;
+      const tr = call.micStream && call.micStream.getAudioTracks()[0];
+      if (tr) { tr.enabled = true; sigSend({ t: 'ctrl', k: 'mic', on: true }); }
+      const mb = document.getElementById('btn-mute');
+      if (mb) { mb.classList.remove('off'); mb.classList.add('on'); mb.querySelector('i').textContent = 'TALK'; }
+    }
+    return;
+  }
+
   if (typingInField()) return;
 
   const bd = $('dlg-board');
@@ -3063,7 +3106,8 @@ window.addEventListener('keydown', (e) => {
   if (comboMatches(e, getBind('watch'))) { btn-watch.click(); return; }
   if (comboMatches(e, getBind('chatPanel'))) { showView($('view-chat').classList.contains('active') ? 'view-call' : 'view-chat'); return; }
   if (comboMatches(e, getBind('hangup'))) { hangUp(); return; }
-  if (comboMatches(e, getBind('mute'))) { toggleMute(); return; }
+  if (comboMatches(e, getBind('stopSounds'))) { stopAllSounds(); return; }
+  if (comboMatches(e, getBind('mute')) && !settings.ptt) { toggleMute(); return; }
   if (comboMatches(e, getBind('deafen'))) { toggleDeafen(); return; }
   if (comboMatches(e, getBind('quitApp'))) {
     window.aero.quitApp();
@@ -3071,7 +3115,17 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-window.addEventListener('keyup', () => {});
+window.addEventListener('keyup', (e) => {
+  if (settings.ptt && pttHeld && e.code === 'Space') {
+    pttHeld = false;
+    if (call && call.micStream) {
+      const tr = call.micStream.getAudioTracks()[0];
+      if (tr) { tr.enabled = false; sigSend({ t: 'ctrl', k: 'mic', on: false }); }
+    }
+    const mb = document.getElementById('btn-mute');
+    if (mb) { mb.classList.add('off'); mb.classList.remove('on'); mb.querySelector('i').textContent = 'PTT'; }
+  }
+});
 
 window.addEventListener('focus', () => {
   winFocused = true;
@@ -3099,6 +3153,7 @@ function openCtxMenu(x, y, entry) {
     b.onclick = () => { closeCtxMenu(); fn(); };
     m.appendChild(b);
   };
+  if (entry.me && entry.text && !entry.deleted) add('\u270E  Edit', () => startEdit(chatOpen, entry));
   add('\u21A9  Reply', () => startReply(chatOpen, entry));
   if (entry.text) {
     add('Copy text', async () => {
@@ -3326,14 +3381,42 @@ async function boot() {
   $('btn-chat-back').onclick = () => { chatOpen = null; showView('view-home'); };
   $('btn-chat-call').onclick = () => { if (chatOpen) startCall(chatOpen); };
   $('btn-chat-nick').onclick = openNickname;
-  $('btn-chat-clear').onclick = clearChatClicked;
+  $('btn-chat-export').onclick = () => {
+    if (!chatOpen) return;
+    const items = chats[chatOpen] || [];
+    let h = '<html><head><meta charset="utf-8"><title>Chat with ' + escapeHtml(displayName(chatOpen)) + '</title>' +
+      '<style>body{font-family:Segoe UI,sans-serif;background:#1e1f22;color:#dbdee1;padding:24px;line-height:1.6}' +
+      '.m{margin-bottom:12px}.who{font-weight:700;color:#7983f5}.when{color:#949ba4;font-size:11px}</style></head><body>' +
+      '<h1>Chat with ' + escapeHtml(displayName(chatOpen)) + '</h1>';
+    for (const it of items) {
+      const d = new Date(it.ts || Date.now());
+      h += '<div class="m"><span class="who">' + escapeHtml(it.me ? identity.name : displayName(chatOpen)) + '</span> ' +
+        '<span class="when">' + d.toLocaleString() + '</span><br>' + escapeHtml(it.text || ('[' + (it.kind || 'file') + ']')) + '</div>';
+    }
+    h += '</body></html>';
+    window.aero.exportChat(h, 'gooncall-chat-' + displayName(chatOpen)).then((p2) => {
+      if (p2) toast('Exported: ' + p2.split('\\').pop(), 'ok');
+    });
+  };
 
   $('chat-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const input = $('chat-input');
     const txt = input.value.trim();
     if (!txt) return;
-    if (sendChat(txt)) input.value = '';
+    if (pendingEditId) {
+      const code = chatOpen, id = pendingEditId;
+      const entry = (chats[code] || []).find(c => c.id === id);
+      if (entry && entry.me) {
+        entry.text = txt;
+        saveChats();
+        sendTo(code, { t: 'edit', id, text: txt });
+        renderChatLog(code);
+      }
+      pendingEditId = null;
+      input.value = '';
+      return;
+    }
   });
 
   $('btn-return-call').onclick = () => showView('view-call');
@@ -3429,6 +3512,13 @@ async function boot() {
     }
   };
   $('btn-reply-cancel').onclick = cancelReply;
+  $('chat-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && pendingEditId) {
+      pendingEditId = null;
+      $('chat-input').value = '';
+      toast('Edit cancelled');
+    }
+  });
   $('chat-input').addEventListener('input', () => {
     sendTyping();
     if (!chatOpen) return;
@@ -3548,6 +3638,11 @@ async function boot() {
   $('board-vol').addEventListener('input', (e) => { settings.boardVol = Number(e.target.value); saveSettingsData(); });
   $('board-monitor').addEventListener('change', (e) => { settings.boardMonitor = e.target.checked; saveSettingsData(); });
 
+  $('set-callvol').addEventListener('input', (e) => {
+    settings.callVol = Number(e.target.value);
+    document.getElementById('callvol-val').textContent = e.target.value;
+    applyCallVolume();
+  });
   $('set-gate').addEventListener('input', updateGateLabel);
   $('set-ring').addEventListener('change', (e) => {
     const t = RINGTONES[e.target.value];
@@ -3605,7 +3700,8 @@ async function boot() {
     await window.aero.setPref('phoneRemote', phoneCb.checked);
     const p = await window.aero.getPrefs();
     if (phoneCb.checked && p.lanUrl) {
-      $('phone-url').textContent = p.lanUrl + '   (same Wi-Fi, open in phone browser)';
+      $('phone-url').textContent = p.lanUrl + '   (same Wi-Fi)';
+      try { if (typeof qrcode === 'function') { const qr = qrcode(0,'M'); qr.addData(p.lanUrl); qr.make(); const qi = document.getElementById('phone-qr'); qi.src = qr.createDataURL(6,10); qi.classList.remove('hidden'); } } catch (e) {}
       $('phone-url').classList.remove('hidden');
       toast('Phone remote ON — open the URL on your phone', 'ok');
     } else {
@@ -3845,6 +3941,7 @@ async function boot() {
   ['mousemove', 'mousedown', 'keydown', 'focus', 'touchstart'].forEach(ev =>
     window.addEventListener(ev, bumpActivity, { passive: true }));
 
+  applyCallVolume();
   initPeer();
   renderRequests();
   applyTheme();

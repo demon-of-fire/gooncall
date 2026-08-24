@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('aero', {
   onRemote: (cb) => ipcRenderer.on('remote', (_e, c) => cb(c)),
   onActivity: (cb) => ipcRenderer.on('activity', (_e, a) => cb(a)),
   exportProfile: () => ipcRenderer.invoke('profile:export'),
+  exportChat: (html, name) => ipcRenderer.invoke('chat:export', html, name),
+  setBoardHotkeys: (v) => ipcRenderer.invoke('prefs:set', 'boardGlobalKeys', v),
   importProfile: () => ipcRenderer.invoke('profile:import'),
 
   xferBegin: (id, name) => ipcRenderer.invoke('xfer:begin', id, name),

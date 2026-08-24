@@ -73,6 +73,7 @@
           <button id="btn-chat-search" class="icon-btn chat-tool-first" aria-label="Search messages" title="Search (Ctrl+F)">&#x1F50D;</button>
           <button id="btn-chat-nick" class="icon-btn" aria-label="Rename friend" title="Rename / note / ringtone">&#x270E;</button>
           <button id="btn-chat-clear" class="icon-btn" aria-label="Clear messages" title="Clear messages">&#x1F5D1;</button>
+          <button id="btn-chat-export" class="icon-btn" aria-label="Export chat" title="Export chat">&#x1F4E4;</button>
           <button id="btn-nudge" class="icon-btn" aria-label="Nudge" title="Nudge them">&#x26A1;</button>
           <button id="btn-chat-call" class="ctrl on chat-call-btn" aria-label="Start voice call" title="Call">&#x1F50A;<span>Call</span></button>
         </header>
@@ -247,6 +248,12 @@
         <label class="field"><span>Ringtone</span>
           <select id="set-ring"></select>
         </label>
+        <label class="field"><span>Call volume &mdash; <b id="callvol-val">100</b>%</span>
+          <input type="range" id="set-callvol" min="0" max="100" step="5" aria-label="Call volume" />
+        </label>
+        <div class="set-checks">
+          <label><input type="checkbox" id="set-ptt" /> Push-to-talk (hold SPACE to speak)</label>
+        </div>
         <label class="field"><span>Ringtone &amp; sounds &mdash; <b id="ringvol-val">70</b>%</span>
           <input type="range" id="set-ringvol" min="0" max="100" step="5" aria-label="Ringtone volume" />
         </label>
@@ -286,6 +293,7 @@
         <div class="set-checks row-wrap">
           <label><input type="checkbox" id="set-phone" /> Phone remote (LAN)</label>
           <span id="phone-url" class="status mono"></span>
+          <img id="phone-qr" class="hidden" alt="QR code for phone remote" />
         </div>
         <div class="set-divider"></div>
         <div class="set-checks row-wrap">
@@ -369,6 +377,22 @@
     <p class="set-hint">Enter opens chat &#183; arrows navigate</p>
   </dialog>
 
+  <dialog id="dlg-snipedit" aria-modal="true" aria-labelledby="se-title">
+    <h2 id="se-title">Mark up screenshot</h2>
+    <div class="snip-tools">
+      <button type="button" data-tool="pen" class="active" title="Pen">&#x270F;</button>
+      <button type="button" data-tool="arrow" title="Arrow">&#x27A4;</button>
+      <button type="button" data-tool="rect" title="Rectangle">&#x25AD;</button>
+      <input type="color" id="snip-color" value="#f23f43" aria-label="Markup color" />
+      <button type="button" id="snip-clear" class="ghost-btn small-btn">Clear</button>
+    </div>
+    <canvas id="snip-canvas"></canvas>
+    <div class="dialog-actions">
+      <button id="snip-discard" class="ghost-btn" type="button">Discard</button>
+      <button id="snip-send" class="primary-btn" type="button">Send</button>
+    </div>
+  </dialog>
+
   <dialog id="dlg-profile" aria-modal="true" aria-labelledby="pf-name">
     <div class="pf-banner"></div>
     <div id="pf-avatar" class="pf-avatar"></div>
@@ -416,6 +440,7 @@
   <script src="js/board.js" defer></script>
   <script src="js/calltools.js" defer></script>
   <script src="js/fun.js" defer></script>
+  <script src="vendor/qrcode.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

@@ -455,3 +455,14 @@ body.nudged #app { animation:nudgeshake .5s ease; }
 .pf-stats .stat b { display:block; font-size:16px; color:var(--txt); }
 .pf-stats .stat span { font-size:10px; color:var(--txt-dim); text-transform:uppercase; letter-spacing:.5px; }
 #pf-code-row { margin-top:6px; }
+
+/* snip editor */
+.snip-tools { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+.snip-tools button { width:34px; height:30px; border-radius:8px; font-size:14px; color:var(--txt-dim); }
+.snip-tools button:hover { background:var(--bg3); color:var(--txt); }
+.snip-tools button.active { background:var(--acc); color:#fff; }
+#snip-color { width:34px; height:30px; border:none; border-radius:8px; background:var(--bg3); padding:2px; cursor:pointer; }
+#snip-canvas { max-width:100%; max-height:56vh; border-radius:10px; cursor:crosshair; display:block; margin:0 auto; background:#111; }
+
+/* phone qr */
+#phone-qr { width:140px; height:140px; image-rendering:pixelated; border-radius:8px; background:#fff; padding:6px; }

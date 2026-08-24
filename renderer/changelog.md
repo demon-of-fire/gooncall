@@ -1,5 +1,17 @@
 # GoonCall Changelog
 
+## v1.5.0 - Quality of Everything
+- **Push-to-talk** - hold SPACE to speak (Settings -> Audio)
+- **QR code for phone remote** - point your camera, skip the typing
+- **Global soundboard keys** - Ctrl+Alt+1..0 fire clips even when minimized
+- **Listening to... status** - Spotify and YouTube Music titles show like a game
+- **Message editing** - right-click your message, Edit; syncs with an edited tag
+- **Per-chat export** - dump any conversation to clean HTML
+- **Call volume slider** separate from ringtones
+- **Stop all sounds shortcut** (Ctrl+Shift+O, editable)
+
+# GoonCall Changelog
+
 ## v1.4.4 - Hands-free updates
 - Live download progress on the Check updates button
 - Updates now install and restart the app automatically - zero clicks

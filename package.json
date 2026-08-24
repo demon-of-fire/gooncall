@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
-    "peerjs": "^1.5.5"
+    "peerjs": "^1.5.5",
+    "qrcode-generator": "^2.0.4"
   }
 }
