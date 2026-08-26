@@ -4,6 +4,17 @@
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+let _renderPending = false;
+function scheduleRender() {
+  if (_renderPending) return;
+  _renderPending = true;
+  requestAnimationFrame(() => {
+    _renderPending = false;
+    if (chatOpen) renderChatLog(chatOpen);
+    updateAllFriendRows();
+  });
+}
+
 function toast(msg, type = '', alert = false) {
   const t = document.createElement('div');
   t.className = 'toast ' + type;
@@ -390,14 +401,32 @@ function helloPayload() {
 }
 
 /* ---------- avatars ---------- */
+function isGifAvatar(img) { return img && typeof img === 'string' && img.startsWith('data:image/gif'); }
+
 function applyAvatar(el, img, hue, txt) {
   if (!el) return;
   if (img) {
-    el.style.backgroundImage = 'url(' + img + ')';
-    el.style.backgroundSize = 'cover';
-    el.style.backgroundPosition = 'center';
-    el.textContent = '';
+    if (isGifAvatar(img)) {
+      el.style.backgroundImage = '';
+      let imgEl = el.querySelector('img.av-gif');
+      if (!imgEl) {
+        imgEl = document.createElement('img');
+        imgEl.className = 'av-gif';
+        el.appendChild(imgEl);
+      }
+      imgEl.src = img;
+      el.textContent = '';
+    } else {
+      const oldImg = el.querySelector('img.av-gif');
+      if (oldImg) oldImg.remove();
+      el.style.backgroundImage = 'url(' + img + ')';
+      el.style.backgroundSize = 'cover';
+      el.style.backgroundPosition = 'center';
+      el.textContent = '';
+    }
   } else {
+    const oldImg = el.querySelector('img.av-gif');
+    if (oldImg) oldImg.remove();
     el.style.backgroundImage = '';
     el.textContent = txt;
   }
@@ -410,17 +439,36 @@ function requestAvatar(code) {
 
 function downscaleAvatar(file) {
   return new Promise((resolve, reject) => {
+    const isGif = file.type === 'image/gif' || (file.name || '').toLowerCase().endsWith('.gif');
+    if (isGif) {
+      const r = new FileReader();
+      r.onload = () => {
+        const b64 = r.result;
+        if (b64.length > 300000) {
+          const img = new Image();
+          img.onload = () => {
+            const c = document.createElement('canvas');
+            c.width = 128; c.height = 128;
+            const x = c.getContext('2d');
+            const s = Math.max(128 / img.width, 128 / img.height);
+            x.drawImage(img, (128 - img.width * s) / 2, (128 - img.height * s) / 2, img.width * s, img.height * s);
+            resolve(c.toDataURL('image/jpeg', 0.82));
+          };
+          img.onerror = () => resolve(b64);
+          img.src = b64;
+        } else {
+          resolve(b64);
+        }
+      };
+      r.onerror = reject;
+      r.readAsDataURL(file);
+      return;
+    }
     const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = 128; c.height = 128;
-      const x = c.getContext('2d');
-      const s = Math.max(128 / img.width, 128 / img.height);
-      x.drawImage(img, (128 - img.width * s) / 2, (128 - img.height * s) / 2, img.width * s, img.height * s);
-      resolve(c.toDataURL('image/jpeg', 0.82));
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
+    const origSrc = URL.createObjectURL(file);
+    img.onerror = () => { URL.revokeObjectURL(origSrc); reject(new Error('image load failed')); };
+    img.onload = () => { URL.revokeObjectURL(origSrc); const c = document.createElement('canvas'); c.width = 128; c.height = 128; const x = c.getContext('2d'); const s = Math.max(128 / img.width, 128 / img.height); x.drawImage(img, (128 - img.width * s) / 2, (128 - img.height * s) / 2, img.width * s, img.height * s); resolve(c.toDataURL('image/jpeg', 0.82)); };
+    img.src = origSrc;
   });
 }
 
@@ -532,13 +580,13 @@ async function onData(conn, raw) {
         safeSend(conn, { t: 'seen', ids: id ? [id] : [] });
       } else {
         setUnread(code, (unread[code] || 0) + 1);
-        renderFriends();
+        scheduleRender();
         if (canNotify()) {
           window.aero.notify(displayName(code), text.slice(0, 120), code);
           window.aero.flash(true);
         }
       }
-      if (chatOpen === code) renderChatLog(code);
+      if (chatOpen === code) scheduleRender();
       break;
     }
 
@@ -580,7 +628,7 @@ async function onData(conn, raw) {
     case 'avatar': {
       const b64 = String(m.b64 || '');
       const f2 = friendByCode(code);
-      if (f2 && b64.length < 120000 && b64.startsWith('data:image')) {
+      if (f2 && b64.length < (b64.startsWith('data:image/gif') ? 400000 : 120000) && b64.startsWith('data:image')) {
         f2.av = b64; f2.avv = Number(m.v) || 1; saveFriends(); renderFriends(); renderProfile();
         if (chatOpen === code) { openChat(code); }
         if (call && call.peerCode === code) renderRemoteTile();
@@ -810,7 +858,7 @@ function openChat(code) {
   if (cav) {
     const h = (f && f.hue != null) ? f.hue : 220;
     cav.style.background = 'linear-gradient(135deg,hsl(' + h + ',62%,52%),hsl(' + ((h + 40) % 360) + ',62%,42%))';
-    cav.textContent = initials(displayName(code));
+    applyAvatar(cav, (f && f.av) || null, h, initials(displayName(code)));
   }
   renderChatStatus();
   unreadCutId = null;
@@ -916,7 +964,7 @@ async function sendAttachment(kind, input, name) {
       : u8.subarray(from, Math.min(from + CHUNK, size));
     safeSend(conn, { t: 'xfer-chunk', id, i, d: u8ToB64(slice) });
     sentBytes += slice.length;
-    if (i % 4 === 0) {
+    if (i % 10 === 0) {
       const dt = (Date.now() - t0) / 1000 || 1;
       entry.xfer.pct = Math.round(((i + 1) / total) * 100);
       entry.xfer.rate = sentBytes / dt;
@@ -981,12 +1029,13 @@ async function recvXferChunk(conn, m) {
     }
     else x.chunks[Number(m.i) || 0] = u8;
     x.got += u8.length;
+    x._chunks = (x._chunks || 0) + 1;
     const entry = (chats[x.code] || []).find(c => c.id === String(m.id));
     if (entry && entry.xfer && x.meta.size) {
       entry.xfer.pct = Math.min(99, Math.round((x.got / x.meta.size) * 100));
       const dt = (Date.now() - x.t0) / 1000 || 1;
       entry.xfer.rate = x.got / dt;
-      if (chatOpen === x.code) renderChatLog(x.code);
+      if (chatOpen === x.code && x._chunks % 5 === 0) renderChatLog(x.code);
     }
   } catch {}
 }
@@ -1050,7 +1099,13 @@ let notes = {};
 let draftSaveTm = null;
 const urlCache = new Map();   // blob -> object URL, kept alive so audio/img elements survive re-renders
 const regUrl = (blob) => {
-  if (!urlCache.has(blob)) urlCache.set(blob, URL.createObjectURL(blob));
+  if (!urlCache.has(blob)) {
+    if (urlCache.size >= 100) {
+      const keys = [...urlCache.keys()].slice(0, 20);
+      for (const k of keys) { URL.revokeObjectURL(urlCache.get(k)); urlCache.delete(k); }
+    }
+    urlCache.set(blob, URL.createObjectURL(blob));
+  }
   return urlCache.get(blob);
 };
 
@@ -1110,7 +1165,7 @@ function renderChatLog(code, forceScroll) {
     }
     const cont = prev && prev.me === it.me && Math.abs((it.ts || 0) - (prev.ts || 0)) < 300000;
     const row = document.createElement('div');
-    row.className = 'msg' + (it.me ? ' me' : ' them') + (cont ? ' cont' : '');
+    row.className = 'msg' + (it.me ? ' me' : ' them') + (cont ? ' cont' : '') + (searchQuery.trim() ? ' search-match' : '');
     row.tabIndex = -1;
     if (it.id) row.dataset.mid = it.id;
 
@@ -1172,6 +1227,18 @@ function appendMsgContent(main, code, it, d, showMeta) {
     if (it.replyTo && it.replyTo.text) {
       const q = document.createElement('div');
       q.className = 'quote';
+      q.dataset.replyId = it.replyTo.id || '';
+      q.style.cursor = 'pointer';
+      q.onclick = () => {
+      const tid = q.dataset.replyId;
+      if (!tid) return;
+      const target = document.querySelector('.msg[data-mid="' + CSS.escape(tid) + '"]');
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.add('msg-highlight');
+        setTimeout(() => target.classList.remove('msg-highlight'), 1500);
+      }
+    };
       const qb = document.createElement('b');
       qb.textContent = it.replyTo.name + ': ';
       q.appendChild(qb);
@@ -1195,6 +1262,18 @@ function appendMsgContent(main, code, it, d, showMeta) {
   } else if (it.replyTo && it.replyTo.text) {
     const q = document.createElement('div');
     q.className = 'quote';
+    q.dataset.replyId = it.replyTo.id || '';
+    q.style.cursor = 'pointer';
+    q.onclick = () => {
+      const tid = q.dataset.replyId;
+      if (!tid) return;
+      const target = document.querySelector('.msg[data-mid="' + CSS.escape(tid) + '"]');
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.add('msg-highlight');
+        setTimeout(() => target.classList.remove('msg-highlight'), 1500);
+      }
+    };
     const qb = document.createElement('b');
     qb.textContent = it.replyTo.name + ': ';
     q.appendChild(qb);
@@ -1212,8 +1291,9 @@ function appendMsgContent(main, code, it, d, showMeta) {
       img.className = 'imgmsg';
       img.src = src;
       img.alt = it.name || 'image';
-      img.title = 'Click to save';
-      img.onclick = () => { const a = document.createElement('a'); a.href = src; a.download = it.name || 'image.png'; a.click(); };
+      img.title = 'Click to view full size';
+      img.style.cursor = 'zoom-in';
+      img.onclick = () => openLightbox(src, it.name || 'image');
       body.appendChild(img);
     } else {
       body.innerHTML = '<div class="file-card"><span class="fc-ico">&#x1F5BC;</span><div class="fc-meta"><div class="fc-name">' +
@@ -1273,8 +1353,16 @@ function appendMsgContent(main, code, it, d, showMeta) {
       card.appendChild(cx);
     }
   } else {
-    body.appendChild(document.createTextNode(it.text));
-    body.insertAdjacentHTML('beforeend', tickHtml(it));
+    const txt = it.text || '';
+    const q = searchQuery.trim().toLowerCase();
+    const esc = txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const linkified = esc.replace(/(https?:\/\/[^\s<&]+)/gi, '<a class="msg-link" href="$1" target="_blank" rel="noopener">$1</a>');
+    if (q && txt.toLowerCase().includes(q)) {
+      const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+      body.insertAdjacentHTML('beforeend', linkified.replace(re, '<mark class="search-hl">$1</mark>') + tickHtml(it));
+    } else {
+      body.insertAdjacentHTML('beforeend', linkified + tickHtml(it));
+    }
     if (it.xfer && it.xfer.pct < 100 && it.me) {
       const bar = document.createElement('div');
       bar.className = 'xbar';
@@ -1761,9 +1849,7 @@ function renderProfile() {
   applyAvatar(av, identity.avatar, identity.hue, initials(identity.name));
   const rail = $('rail-avatar');
   if (rail) {
-    rail.style.backgroundImage = identity.avatar ? 'url(' + identity.avatar + ')' : '';
-    rail.style.backgroundSize = 'cover';
-    rail.textContent = identity.avatar ? '' : initials(identity.name);
+    applyAvatar(rail, identity.avatar, identity.hue, initials(identity.name));
   }
   const home = $('home-code');
   if (home) home.textContent = identity.code;
@@ -1812,21 +1898,33 @@ function friendRow(f) {
 
   const callBtn = document.createElement('button');
   callBtn.className = 'friend-action friend-call';
+  callBtn.dataset.action = 'call';
+  callBtn.dataset.code = f.code;
   callBtn.title = 'Call ' + (f.nick || f.name);
   callBtn.innerHTML = '&#128222;';
-  callBtn.onclick = (e) => { e.stopPropagation(); startCall(f.code); };
 
   const delBtn = document.createElement('button');
   delBtn.className = 'friend-action friend-remove';
+  delBtn.dataset.action = 'remove';
+  delBtn.dataset.code = f.code;
   delBtn.title = 'Remove ' + (f.nick || f.name);
   delBtn.innerHTML = '&#x2715;';
-  delBtn.onclick = (e) => { e.stopPropagation(); removeFriend(f.code); };
 
   li.appendChild(callBtn); li.appendChild(delBtn);
   li.tabIndex = 0;
-  li.setAttribute('role', 'button');
+  li.setAttribute('role', 'row');
   li.setAttribute('aria-label', (f.nick || f.name) + (on ? ', online. Press Enter to chat' : ', offline'));
-  li.onclick = () => openChat(f.code);
+  li.onclick = (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (btn) {
+      e.stopPropagation();
+      const code = btn.dataset.code;
+      if (btn.dataset.action === 'call') startCall(code);
+      else if (btn.dataset.action === 'remove') removeFriend(code);
+      return;
+    }
+    openChat(f.code);
+  };
   li.onkeydown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChat(f.code); }
   };
@@ -2344,6 +2442,14 @@ function teardownCall(opts = {}) {
     clearTimeout(call.ringTimeout);
     clearTimeout(call.answerTimeout);
     clearTimeout(call.graceTm);
+    if (call.shareSenders) call.shareSenders.forEach(s => { try { s.replaceTrack(null); } catch {} });
+    call.shareSenders = [];
+    call.pendingIce = [];
+    if (call.pc) {
+      call.pc.onicecandidate = null;
+      call.pc.ontrack = null;
+      call.pc.onconnectionstatechange = null;
+    }
     if (call.pc) try { call.pc.close(); } catch {}
     if (call.micStream) call.micStream.getTracks().forEach(t => t.stop());
     if (call.shareStream) call.shareStream.getTracks().forEach(t => t.stop());
@@ -2391,10 +2497,7 @@ function renderLocalTile() {
   const nm = document.getElementById('av-local-name');
   if (nm) nm.textContent = identity.avatar ? '' : initials(identity.name);
   const t = document.getElementById('av-local');
-  if (t) {
-    t.style.backgroundImage = identity.avatar ? 'url(' + identity.avatar + ')' : '';
-    t.style.backgroundSize = 'cover';
-  }
+  if (t) applyAvatar(t, identity.avatar, identity.hue, initials(identity.name));
   const tl = document.getElementById('tile-local-name');
   if (tl) tl.textContent = identity.name;
 }
@@ -2404,10 +2507,7 @@ function renderRemoteTile() {
   const f = friendByCode(call.peerCode);
   const hue = (f && f.hue != null) ? f.hue : 220;
   const t = document.getElementById('av-remote');
-  if (t) {
-    t.style.backgroundImage = (f && f.av) ? 'url(' + f.av + ')' : '';
-    t.style.backgroundSize = 'cover';
-  } else if (!hue) {}
+  if (t) applyAvatar(t, (f && f.av) || null, hue, initials(displayName(call.peerCode)));
   const nm2 = document.getElementById('av-remote-name');
   if (nm2) nm2.textContent = (f && f.av) ? '' : initials(displayName(call.peerCode));
   const rn = document.querySelector('#av-remote .tile-name');
@@ -2676,6 +2776,33 @@ function renderRecent() {
     li.onclick = () => openChat(it.code);
     list.appendChild(li);
   }
+}
+
+/* ============ lightbox ============ */
+function openLightbox(src, name) {
+  const overlay = document.createElement('div');
+  overlay.className = 'lightbox-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = name || 'image';
+  img.className = 'lightbox-img';
+  img.onclick = (e) => { e.stopPropagation(); const a = document.createElement('a'); a.href = src; a.download = name || 'image.png'; a.click(); };
+  const close = document.createElement('button');
+  close.className = 'lightbox-close';
+  close.innerHTML = '&#x2715;';
+  close.onclick = () => overlay.remove();
+  const info = document.createElement('div');
+  info.className = 'lightbox-info';
+  info.textContent = name || 'image';
+  overlay.appendChild(img);
+  overlay.appendChild(close);
+  overlay.appendChild(info);
+  document.body.appendChild(overlay);
+  overlay.focus();
+  document.addEventListener('keydown', function lbEsc(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', lbEsc); }
+  });
 }
 
 /* ============ dialogs ============ */
@@ -3622,7 +3749,11 @@ async function boot() {
   };
   $('chat-search').addEventListener('input', (e) => {
     searchQuery = e.target.value;
-    if (chatOpen) renderChatLog(chatOpen);
+    if (chatOpen) {
+      renderChatLog(chatOpen);
+      const first = document.querySelector('.msg.search-match');
+      if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   });
   $('btn-search-close').onclick = () => {
     searchQuery = '';
@@ -3632,6 +3763,19 @@ async function boot() {
   };
   $('chat-search').addEventListener('keydown', (e) => {
     if (e.key === 'Escape') $('btn-search-close').click();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const matches = document.querySelectorAll('.msg.search-match');
+      if (!matches.length) return;
+      const active = document.querySelector('.msg.search-focus');
+      let idx = -1;
+      matches.forEach((m, i) => { if (m === active) idx = i; });
+      if (e.shiftKey) idx = (idx - 1 + matches.length) % matches.length;
+      else idx = (idx + 1) % matches.length;
+      if (active) active.classList.remove('search-focus');
+      matches[idx].classList.add('search-focus');
+      matches[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   });
 
   /* jump to latest */
@@ -3663,22 +3807,18 @@ async function boot() {
   });
 
   /* emoji picker */
-  const EMOJIS = ['😀','😂','🥲','😍','🤔','😎','😭','😡','🥳','😱','🤡','💀','👍','👎','🙏','👏','💪','🔥','💯','🎉','❤️','💜','💔','⭐','🍕','☕','🎮','🎧','😴','🤝','👀','🚀','🌈','⚡','✅','❌','🤖','👻','🎃','🐸'];
   const pop = $('emoji-pop');
-  for (const em of EMOJIS) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = em;
-    b.onclick = () => {
+  if (window.Emoji) {
+    Emoji.buildPicker(pop, (em) => {
       const inp = $('chat-input');
       const at = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
       inp.value = inp.value.slice(0, at) + em + inp.value.slice(at);
       inp.focus();
       pop.classList.add('hidden');
-    };
-    pop.appendChild(b);
+      Emoji.addRecent && Emoji.addRecent(em);
+    });
   }
-  $('btn-emoji').onclick = (e) => { e.stopPropagation(); pop.classList.toggle('hidden'); };
+  $('btn-emoji').onclick = (e) => { e.stopPropagation(); pop.classList.toggle('hidden'); if (!pop.classList.contains('hidden') && window.Emoji) { const s = pop.querySelector('.emoji-search'); if (s) s.focus(); } };
   document.addEventListener('click', (e) => {
     if (!pop.contains(e.target) && e.target !== $('btn-emoji')) pop.classList.add('hidden');
   });
