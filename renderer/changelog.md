@@ -1,6 +1,18 @@
 # GoonCall Changelog
 
+## v1.5.8 - Markdown, Slash Commands, Themes, Stickers
 
+- **Markdown rendering** in chat: bold, italic, strikethrough, code blocks, spoilers, blockquotes, headers, lists
+- **Slash commands**: /shrug, /tableflip, /unflip, /me, /nick, /poll, /8ball, /remind, /dice
+- **Sticker mode**: send a single emoji as a big animated sticker
+- **6 app themes**: Default, Midnight, Cyberpunk, Sunset, Ocean, Mint
+- **Profile banners**: auto-generated gradient based on your color
+- **Clipboard sync**: copy text while chatting and it syncs to your friend
+- **Spoiler tags**: wrap text in ||spoiler|| to hide it until clicked
+- **Command hints**: typing `/` shows available commands
+- **Fixed**: auto-updater now checks the correct repo
+- **Fixed**: connection retry backoff stops console flooding
+- **Fixed**: duplicate stopRemoteServer function removed
 
 ## v1.5.4 - Fix: Quit shortcut
 

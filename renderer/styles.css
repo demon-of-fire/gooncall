@@ -501,3 +501,82 @@ body.nudged #app { animation:nudgeshake .5s ease; }
 .lightbox-close:hover { background:rgba(255,255,255,.25); }
 .lightbox-info { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); color:rgba(255,255,255,.7); font-size:12px; background:rgba(0,0,0,.45); padding:4px 14px; border-radius:8px; }
 @keyframes lb-fade-in { from { opacity:0; } to { opacity:1; } }
+
+/* ---- markdown rendering ---- */
+.md-codeblock { background:var(--bg0); border:1px solid var(--bg3); border-radius:6px; padding:8px 12px; margin:4px 0; font-family:Consolas,monospace; font-size:13px; white-space:pre-wrap; word-break:break-word; overflow-x:auto; }
+.md-inline { background:var(--bg0); border:1px solid var(--bg3); border-radius:4px; padding:1px 5px; font-family:Consolas,monospace; font-size:13px; }
+.md-spoiler { background:var(--txt-dim); color:transparent; border-radius:3px; padding:0 2px; cursor:pointer; transition:all .2s; }
+.md-spoiler.revealed { background:var(--bg3); color:var(--txt); }
+.md-quote { border-left:3px solid var(--acc); padding:2px 10px; margin:4px 0; color:var(--txt-dim); }
+.md-h1 { font-size:18px; font-weight:800; display:block; margin:4px 0 2px; }
+.md-h2 { font-size:16px; font-weight:700; display:block; margin:4px 0 2px; }
+.md-h3 { font-size:15px; font-weight:600; display:block; margin:4px 0 2px; }
+.md-li { display:block; padding-left:8px; }
+
+/* ---- sticker mode ---- */
+.sticker-msg { font-size:72px; line-height:1.2; text-align:center; padding:12px 0; animation:sticker-pop .35s cubic-bezier(.17,.67,.35,1.4); user-select:none; }
+@keyframes sticker-pop { 0% { transform:scale(0); opacity:0; } 60% { transform:scale(1.15); } 100% { transform:scale(1); opacity:1; } }
+
+/* ---- me-action (Discord-style /me) ---- */
+.me-action { font-style:italic; color:var(--txt-dim); }
+
+/* ---- themes ---- */
+[data-theme="cyberpunk"] {
+  --bg0:#0a0a0f; --bg1:#13131f; --bg2:#1a1a2e; --bg3:#252540;
+  --line:#1e1e3a; --txt:#e0e0ff; --txt-dim:#7878a0;
+  --acc:#ff2a6d; --acc2:#ff5c8a; --ok:#05ffa1; --warn:#f9c80e; --bad:#ff2a6d;
+}
+[data-theme="cyberpunk"] .logo-dot { box-shadow:0 0 14px rgba(255,42,109,.9); }
+[data-theme="cyberpunk"] .rail-item.active { background:linear-gradient(180deg,rgba(255,42,109,.18),transparent); }
+
+[data-theme="sunset"] {
+  --bg0:#1a1015; --bg1:#2a1a22; --bg2:#332028; --bg3:#4a3040;
+  --line:#2e2028; --txt:#f0dfe8; --txt-dim:#a08898;
+  --acc:#ff6b35; --acc2:#ff8c5a; --ok:#7ec850; --warn:#ffd166; --bad:#e63946;
+}
+[data-theme="sunset"] .logo-dot { box-shadow:0 0 14px rgba(255,107,53,.9); }
+
+[data-theme="ocean"] {
+  --bg0:#0d1117; --bg1:#161b22; --bg2:#1c2333; --bg3:#2a3040;
+  --line:#1e2530; --txt:#c9d1d9; --txt-dim:#6e7681;
+  --acc:#58a6ff; --acc2:#79b8ff; --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+}
+[data-theme="ocean"] .logo-dot { box-shadow:0 0 14px rgba(88,166,255,.9); }
+
+[data-theme="mint"] {
+  --bg0:#0f1412; --bg1:#1a2420; --bg2:#1f2e28; --bg3:#2a3e35;
+  --line:#1e2e26; --txt:#d4ede2; --txt-dim:#7aaa96;
+  --acc:#00d68f; --acc2:#2ee6a8; --ok:#00d68f; --warn:#ffc53d; --bad:#ff4d6a;
+}
+[data-theme="mint"] .logo-dot { box-shadow:0 0 14px rgba(0,214,143,.9); }
+
+[data-theme="midnight"] {
+  --bg0:#0a0b10; --bg1:#12131a; --bg2:#181a24; --bg3:#22242e;
+  --line:#1a1c26; --txt:#c8cad0; --txt-dim:#6b6e78;
+  --acc:#6366f1; --acc2:#818cf8; --ok:#22c55e; --warn:#eab308; --ok:#22c55e; --bad:#ef4444;
+}
+[data-theme="midnight"] .logo-dot { box-shadow:0 0 14px rgba(99,102,241,.9); }
+
+/* ---- profile banner ---- */
+.pf-banner { width:100%; height:80px; border-radius:10px 10px 0 0; margin:-16px -16px 0; }
+
+/* ---- clipboard sync toast ---- */
+.clip-sync-toast { background:var(--ok); color:#fff; }
+
+/* ---- theme selector in settings ---- */
+.theme-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+.theme-swatch { width:32px; height:32px; border-radius:50%; border:2px solid transparent; cursor:pointer; transition:all .15s; }
+.theme-swatch:hover { transform:scale(1.12); }
+.theme-swatch.active { border-color:var(--txt); box-shadow:0 0 0 2px var(--acc); }
+
+/* ---- call history ---- */
+.call-log-item { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:8px; background:var(--bg2); margin-bottom:4px; }
+.call-log-item .cl-icon { font-size:18px; }
+.call-log-item .cl-meta { flex:1; }
+.call-log-item .cl-name { font-weight:600; }
+.call-log-item .cl-dur { font-size:12px; color:var(--txt-dim); }
+
+/* ---- command hint in input ---- */
+.cmd-hint { position:absolute; bottom:100%; left:0; right:0; background:var(--bg1); border:1px solid var(--bg3); border-radius:8px; padding:6px 10px; font-size:12px; color:var(--txt-dim); display:none; }
+.cmd-hint.show { display:block; }
+.cmd-hint b { color:var(--txt); }

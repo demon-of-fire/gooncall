@@ -97,6 +97,7 @@
           <div id="drop-hint" class="drop-hint hidden">Drop files to send</div>
         </div>
         <form id="chat-form" class="chat-form">
+          <div id="cmd-hint" class="cmd-hint"></div>
           <div class="chat-pill">
             <button type="button" id="btn-attach" class="pill-btn" aria-label="Attach file" title="Attach file">&#x1F4CE;</button>
             <input id="chat-input" type="text" placeholder="Message&#8230;" autocomplete="off" aria-label="Message" />
@@ -227,6 +228,9 @@
         <div class="set-checks row-wrap">
           <label><input type="checkbox" id="set-amoled" /> AMOLED black</label>
         </div>
+        <label class="field"><span>Theme</span>
+          <div class="theme-row" id="theme-row" role="radiogroup" aria-label="App theme"></div>
+        </label>
       </section>
 
       <section class="tab-page" data-page="audio">

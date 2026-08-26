@@ -4,6 +4,22 @@
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+function renderMarkdown(raw) {
+  let t = escapeHtml(String(raw));
+  t = t.replace(/```([\s\S]*?)```/g, '<pre class="md-codeblock">$1</pre>');
+  t = t.replace(/`([^`\n]+)`/g, '<code class="md-inline">$1</code>');
+  t = t.replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>');
+  t = t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  t = t.replace(/(?<!\w)\*(.+?)\*(?!\w)/g, '<i>$1</i>');
+  t = t.replace(/~~(.+?)~~/g, '<s>$1</s>');
+  t = t.replace(/\|\|(.+?)\|\|/g, '<span class="md-spoiler" title="Click to reveal">$1</span>');
+  t = t.replace(/^&gt;\s?(.+)/gm, '<blockquote class="md-quote">$1</blockquote>');
+  t = t.replace(/^#{1,3}\s+(.+)/gm, (m, txt) => '<span class="md-h' + m.indexOf(' ') + '">' + txt + '</span>');
+  t = t.replace(/^[-*]\s+(.+)/gm, '<span class="md-li">\u2022 $1</span>');
+  t = t.replace(/(https?:\/\/[^\s<&]+)/gi, '<a class="msg-link" href="$1" target="_blank" rel="noopener">$1</a>');
+  return t;
+}
+
 let _renderPending = false;
 function scheduleRender() {
   if (_renderPending) return;
@@ -118,7 +134,7 @@ let settings = {
   echo: true, noise: true, agc: true,
   ringVol: 70, notifyMsgs: true,
   status: '', ring: 'classic', gate: 0,
-  sharePreset: 'balanced', accent: 'violet', amoled: false,
+  sharePreset: 'balanced', accent: 'violet', amoled: false, theme: '',
   qh: false, qhStart: '23:00', qhEnd: '08:00',
   boardVol: 80, boardMonitor: true, fx: 'none',
   pins: {}
@@ -159,6 +175,7 @@ function applyTheme() {
   document.documentElement.style.setProperty('--acc', a[0]);
   document.documentElement.style.setProperty('--acc2', a[1]);
   document.body.classList.toggle('amoled', !!settings.amoled);
+  document.documentElement.dataset.theme = settings.theme || '';
 }
 
 function qhActive() {
@@ -256,6 +273,8 @@ let peerOnline = false;
 const conns = new Map();
 const connAttempts = new Map();
 const presence = new Map();
+const lastConnAttempt = new Map();
+const connFailCount = new Map();
 
 function initPeer() {
   peerOnline = false; renderConnState();
@@ -456,7 +475,17 @@ function downscaleAvatar(file) {
           };
           img.onerror = () => resolve(b64);
           img.src = b64;
-        } else {
+  } else if (it.sticker) {
+    const stickerEl = document.createElement('div');
+    stickerEl.className = 'sticker-msg';
+    stickerEl.textContent = it.text || '';
+    body.appendChild(stickerEl);
+  } else if (it.meAction) {
+    const act = document.createElement('span');
+    act.className = 'me-action';
+    act.textContent = '* ' + (it.me ? identity.name : displayName(code)) + ' ' + (it.text || '');
+    body.appendChild(act);
+  } else {
           resolve(b64);
         }
       };
@@ -499,9 +528,19 @@ function sendTo(code, msg) {
 
 function sweepPresence() {
   if (!peerOnline) return;
+  const now = Date.now();
   for (const f of friends) {
     const c = conns.get(f.code);
-    if (!c || !c.open) ensureConn(f.code).catch(() => {});
+    if (!c || !c.open) {
+      const fails = connFailCount.get(f.code) || 0;
+      const backoff = Math.min(300000, 5000 * Math.pow(2, fails));
+      const last = lastConnAttempt.get(f.code) || 0;
+      if (now - last < backoff) continue;
+      lastConnAttempt.set(f.code, now);
+      ensureConn(f.code)
+        .then(() => connFailCount.set(f.code, 0))
+        .catch(() => connFailCount.set(f.code, fails + 1));
+    }
   }
 }
 
@@ -572,7 +611,7 @@ async function onData(conn, raw) {
       const text = String(m.text || '').slice(0, 4000).trim();
       if (!text) break;
       const id = m.id ? String(m.id).slice(0, 64) : null;
-      await pushChat(code, { me: false, text, ts: Number(m.ts) || Date.now(), id, replyTo: m.replyTo });
+      await pushChat(code, { me: false, text, ts: Number(m.ts) || Date.now(), id, replyTo: m.replyTo, sticker: !!m.sticker, meAction: !!m.meAction });
       safeSend(conn, { t: 'ack', id });
       Sounds.pop();
       const chatVisible = chatOpen === code && $('view-chat').classList.contains('active') && winFocused;
@@ -787,6 +826,10 @@ async function onData(conn, raw) {
       else if (m.k === 'deafen') { remoteDeafened = !!m.on; renderRemoteTile(); }
       else if (m.k === 'share-start') { remoteSharing = true; applyStage(); }
       else if (m.k === 'share-stop') { remoteSharing = false; applyStage(); maybeClearShareVideo(); }
+      break;
+    }
+    case 'clip-sync': {
+      if (m.text) toast('📋 Copied from ' + displayName(code) + ': ' + String(m.text).slice(0, 80), '');
       break;
     }
   }
@@ -1355,14 +1398,12 @@ function appendMsgContent(main, code, it, d, showMeta) {
   } else {
     const txt = it.text || '';
     const q = searchQuery.trim().toLowerCase();
-    const esc = txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const linkified = esc.replace(/(https?:\/\/[^\s<&]+)/gi, '<a class="msg-link" href="$1" target="_blank" rel="noopener">$1</a>');
+    let html = renderMarkdown(txt);
     if (q && txt.toLowerCase().includes(q)) {
       const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-      body.insertAdjacentHTML('beforeend', linkified.replace(re, '<mark class="search-hl">$1</mark>') + tickHtml(it));
-    } else {
-      body.insertAdjacentHTML('beforeend', linkified + tickHtml(it));
+      html = html.replace(re, '<mark class="search-hl">$1</mark>');
     }
+    body.insertAdjacentHTML('beforeend', html + tickHtml(it));
     if (it.xfer && it.xfer.pct < 100 && it.me) {
       const bar = document.createElement('div');
       bar.className = 'xbar';
@@ -1484,9 +1525,64 @@ function deleteMessage(code, id) {
   }
 }
 
+function sendChatRaw(code, text, kind) {
+  if (!text) return;
+  const id = newMsgId();
+  let rt;
+  if (replyTarget) { rt = { name: replyTarget.name, text: replyTarget.text, id: replyTarget.id }; replyTarget = null; $('reply-bar').classList.add('hidden'); }
+  const entry = { me: true, text, ts: Date.now(), id, status: 'pending', replyTo: rt };
+  if (kind === 'me-action') entry.meAction = true;
+  pushChat(code, entry);
+  renderChatLog(code);
+  Sounds.sent();
+  transmitChat(code, { t: 'chat', text, ts: Date.now(), id, replyTo: rt, meAction: entry.meAction });
+  const e2 = (chats[code] || []).find(c => c.id === id);
+  if (e2) { e2.status = 'sent'; scheduleDeliveredFallback(code, id); }
+  saveChats(); renderChatLog(code);
+}
+
 async function sendChat(text) {
   const code = chatOpen;
   if (!code || !text) return false;
+
+  /* ---- slash commands ---- */
+  const slash = text.trim();
+  if (slash.startsWith('/')) {
+    const parts = slash.split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const rest = slash.slice(cmd.length).trim();
+    const commands = {
+      '/shrug': '\u00AF\\_(\u30C4)_/\u00AF',
+      '/tableflip': '(\u256F\u00B0\u25A1\u00B0)\u256F\uFE35 \u253B\u2501\u253B',
+      '/unflip': '\u252C\u2500\u252C\u30CE(\u00BA _ \u00BA\u30CE)',
+      '/lenny': '( \u0361\u00B0 \u035C\u0296 \u0361\u00B0 )',
+      '/dealwithit': '\u2588\u2580\u2588 \u2588\u2580\u2588 \u2588\u2580\u2588',
+    };
+    if (commands[cmd]) { sendChatRaw(code, rest ? rest + ' ' + commands[cmd] : commands[cmd]); return true; }
+    if (cmd === '/me') { sendChatRaw(code, rest, 'me-action'); return true; }
+    if (cmd === '/nick') { if (rest && chatOpen) { const f = friendByCode(code); if (f) { f.nick = rest.slice(0, 32); saveFriends(); renderFriends(); toast('Nickname set to ' + f.nick, 'ok'); } } return true; }
+    if (cmd === '/8ball') { const answers = ['Yes.', 'No.', 'Ask again later.', 'Definitely.', 'No way.', 'Absolutely.', 'Without a doubt.', 'Not a chance.', 'Try again.', 'The stars say yes.']; toast(answers[Math.floor(Math.random() * answers.length)], 'ok'); return true; }
+    if (cmd === '/poll') { sendChatRaw(code, '\uD83D\uDDF3 POLL: ' + (rest || 'Vote below!')); return true; }
+    if (cmd === '/remind') { const m = rest.match(/^(\d+)(m|h|d)\s+(.+)/); if (m) { const ms = { m: 60000, h: 3600000, d: 86400000 }[m[2]] * Number(m[1]); toast('Reminder set for ' + m[1] + m[2] + ' from now', 'ok'); setTimeout(() => { toast('\u23F0 Reminder: ' + m[3], 'ok'); window.aero.notify('Reminder', m[3]); }, ms); } else { toast('Usage: /remind 30m or /remind 2h <text>', 'err'); } return true; }
+    if (cmd === '/dice' || cmd === '/roll') { const n = Number(rest) || 6; toast('\uD83C\uDFB2 ' + (1 + Math.floor(Math.random() * n)), 'ok'); return true; }
+    toast('Unknown command: ' + cmd + ' — try /shrug /tableflip /me /poll /remind /8ball /dice', 'err');
+    return true;
+  }
+
+  /* ---- sticker mode: single large emoji ---- */
+  const emojiOnly = /^[\p{Emoji_Presentation}\p{Emoji}\uFE0F\u200D]{1,8}$/u.test(slash);
+  if (emojiOnly && slash.length <= 8) {
+    const id = newMsgId();
+    let rt;
+    if (replyTarget) { rt = { name: replyTarget.name, text: replyTarget.text, id: replyTarget.id }; replyTarget = null; $('reply-bar').classList.add('hidden'); }
+    pushChat(code, { me: true, text: slash, ts: Date.now(), id, status: 'pending', replyTo: rt, sticker: true });
+    renderChatLog(code); Sounds.sent();
+    transmitChat(code, { t: 'chat', text: slash, ts: Date.now(), id, replyTo: rt, sticker: true });
+    const entry = (chats[code] || []).find(c => c.id === id);
+    if (entry) entry.status = 'sent';
+    saveChats(); renderChatLog(code);
+    return true;
+  }
   const id = newMsgId();
   let rt;
   if (replyTarget) {
@@ -2847,6 +2943,29 @@ function buildAccentRow() {
   }
 }
 
+const THEMES = [
+  { key: '', label: 'Default', colors: ['#5865f2','#3ba55c'] },
+  { key: 'midnight', label: 'Midnight', colors: ['#6366f1','#22c55e'] },
+  { key: 'cyberpunk', label: 'Cyberpunk', colors: ['#ff2a6d','#05ffa1'] },
+  { key: 'sunset', label: 'Sunset', colors: ['#ff6b35','#7ec850'] },
+  { key: 'ocean', label: 'Ocean', colors: ['#58a6ff','#3fb950'] },
+  { key: 'mint', label: 'Mint', colors: ['#00d68f','#22c55e'] },
+];
+function buildThemeRow() {
+  const row = $('theme-row');
+  if (!row) return;
+  row.innerHTML = '';
+  for (const t of THEMES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'theme-swatch' + ((settings.theme || '') === t.key ? ' active' : '');
+    b.style.background = 'linear-gradient(135deg,' + t.colors[0] + ',' + t.colors[1] + ')';
+    b.title = t.label;
+    b.onclick = () => { settings.theme = t.key; applyTheme(); buildThemeRow(); saveSettings(); };
+    row.appendChild(b);
+  }
+}
+
 function openSettings() {
   $('set-name').value = identity.name;
   $('set-status').value = identity.status || '';
@@ -2877,6 +2996,7 @@ function openSettings() {
   $('set-qh-start').value = settings.qhStart || '23:00';
   $('set-qh-end').value = settings.qhEnd || '08:00';
   buildAccentRow();
+  buildThemeRow();
   scCapturing = null;
   renderShortcuts();
   applyAvatar($('set-av-preview'), identity.avatar, identity.hue, initials(identity.name));
@@ -3498,6 +3618,8 @@ function showProfile(code) {
   const img = me ? identity.avatar : (f && f.av);
   applyAvatar($('pf-avatar'), img, hue, initials(name));
   $('pf-name').textContent = name;
+  const banner = document.querySelector('.pf-banner');
+  if (banner) banner.style.background = 'linear-gradient(135deg,hsl(' + hue + ',55%,28%),hsl(' + ((hue + 60) % 360) + ',50%,18%),hsl(' + ((hue + 120) % 360) + ',45%,12%))';
   const on = me ? peerOnline : isOnline(code);
   const pst = peerState[code] || {};
   $('pf-statusline').textContent = me
@@ -3733,6 +3855,26 @@ async function boot() {
     drafts[chatOpen] = $('chat-input').value;
     clearTimeout(draftSaveTm);
     draftSaveTm = setTimeout(() => window.aero.setData('drafts', drafts), 500);
+    const hint = $('cmd-hint');
+    const v = $('chat-input').value;
+    if (v.startsWith('/') && v.length > 1) {
+      const cmdList = [
+        ['/shrug', 'Append ¯\\_(ツ)_/¯'],
+        ['/tableflip', 'Table flip'],
+        ['/unflip', 'Unflip table'],
+        ['/me action', 'Action text'],
+        ['/nick name', 'Quick rename friend'],
+        ['/poll question', 'Create a poll'],
+        ['/8ball question', 'Magic 8-ball'],
+        ['/remind 30m text', 'Set a reminder'],
+        ['/dice N', 'Roll a die (default d6)'],
+      ];
+      const matches = cmdList.filter(c => c[0].startsWith(v.split(' ')[0].toLowerCase()));
+      if (matches.length) {
+        hint.innerHTML = '<b>Commands:</b> ' + matches.map(c => '<b>' + c[0] + '</b> ' + c[1]).join(' &middot; ');
+        hint.classList.add('show');
+      } else { hint.classList.remove('show'); }
+    } else { hint.classList.remove('show'); }
   });
 
   /* search */
@@ -4173,6 +4315,28 @@ updateAllFriendRows();
   applyTheme();
   updateShortcutTooltips();
   setInterval(() => { sweepPresence(); renderChatStatus(); }, 20000);
+
+  /* spoiler click-to-reveal */
+  document.addEventListener('click', (e) => {
+    const sp = e.target.closest('.md-spoiler');
+    if (sp) sp.classList.toggle('revealed');
+  });
+
+  /* clipboard sync: watch for local clipboard changes and send to peer */
+  let lastClip = '';
+  setInterval(async () => {
+    try {
+      const txt = await navigator.clipboard.readText();
+      if (txt && txt !== lastClip && txt.length < 4000 && chatOpen && isOnline(chatOpen)) {
+        lastClip = txt;
+        sendTo(chatOpen, { t: 'clip-sync', text: txt });
+      }
+    } catch {}
+  }, 3000);
+
+  /* render call history on home */
+  renderRecent();
+
   maybeOnboarding();
 }
 
