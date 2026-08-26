@@ -221,7 +221,7 @@ let settings = {
   status: '', ring: 'classic', gate: 0,
   sharePreset: 'balanced', accent: 'violet', amoled: false, theme: '',
   qh: false, qhStart: '23:00', qhEnd: '08:00',
-  boardVol: 80, boardMonitor: true, fx: 'none', hdVoice: false,
+  boardVol: 80, boardMonitor: true, fx: 'none', hdVoice: false, clipSync: false,
   pins: {}
 };
 let pendingIn = [];     // [{code,name}] incoming friend requests
@@ -564,17 +564,7 @@ function downscaleAvatar(file) {
           };
           img.onerror = () => resolve(b64);
           img.src = b64;
-  } else if (it.sticker) {
-    const stickerEl = document.createElement('div');
-    stickerEl.className = 'sticker-msg';
-    stickerEl.textContent = it.text || '';
-    body.appendChild(stickerEl);
-  } else if (it.meAction) {
-    const act = document.createElement('span');
-    act.className = 'me-action';
-    act.textContent = '* ' + (it.me ? identity.name : displayName(code)) + ' ' + (it.text || '');
-    body.appendChild(act);
-  } else {
+        } else {
           resolve(b64);
         }
       };
@@ -1253,6 +1243,7 @@ function hueFor(code) {
 function myHue() { return identity.hue != null ? identity.hue : 220; }
 
 function renderChatLog(code, forceScroll) {
+  if (chatOpen !== code || !$('view-chat').classList.contains('active')) return;
   const log = $('chat-log');
   log.innerHTML = '';
   const items = chats[code] || [];
@@ -1717,7 +1708,9 @@ async function sendChat(text) {
 
 /* relentless retry: every 12s, try to hand queued messages over */
 setInterval(async () => {
-  for (const code of Object.keys(outbox)) {
+  const codes = Object.keys(outbox);
+  if (!codes.length) return;
+  for (const code of codes) {
     const q = outbox[code];
     if (!q || !q.length) continue;
     const ok = await transmitChat(code, { t: 'ping-check' });
@@ -3077,6 +3070,7 @@ function openSettings() {
   $('set-noise').checked = settings.noise;
   $('set-agc').checked = settings.agc;
   $('set-hdvoice').checked = !!settings.hdVoice;
+  $('set-clip-sync').checked = !!settings.clipSync;
   $('set-notifs').checked = settings.notifyMsgs !== false;
   $('set-callvol').value = settings.callVol;
   $('callvol-val').textContent = settings.callVol;
@@ -3261,6 +3255,7 @@ function saveSettings() {
   settings.noise = $('set-noise').checked;
   settings.agc = $('set-agc').checked;
   settings.hdVoice = $('set-hdvoice').checked;
+  settings.clipSync = $('set-clip-sync').checked;
   settings.notifyMsgs = $('set-notifs').checked;
   settings.ptt = $('set-ptt').checked;
   settings.callVol = Number($('set-callvol').value) || 100;
@@ -4125,7 +4120,7 @@ async function boot() {
   $('set-ring').addEventListener('change', (e) => {
     const t = RINGTONES[e.target.value];
     if (!t || !t.steps.length) return;
-updateAllFriendRows();
+    let i = 0;
     const iv = setInterval(() => {
       if (i >= t.steps.length) { clearInterval(iv); return; }
       Sounds.blip(t.steps[i], t.dur, .09 * Sounds.vol());
@@ -4272,15 +4267,8 @@ updateAllFriendRows();
     }
   });
 
-  window.addEventListener('keydown', (e) => {
-    if (comboMatches(e, getBind('switcher'))) {
-      e.preventDefault();
-      if (!$('dlg-switcher').open) openSwitcher();
-      else try { $('dlg-switcher').close(); } catch {}
-    }
-  });
-
-  $('btn-nudge').onclick = () => {
+  const nudgeEl = $('btn-nudge');
+  if (nudgeEl) nudgeEl.onclick = () => {
     if (!chatOpen) return;
     sigSend({ t: 'bump' });
     document.body.classList.add('nudged');
@@ -4432,17 +4420,20 @@ updateAllFriendRows();
     if (sp) sp.classList.toggle('revealed');
   });
 
-  /* clipboard sync: watch for local clipboard changes and send to peer */
+  /* clipboard sync: opt-in, watch for local clipboard changes and send to peer */
   let lastClip = '';
-  setInterval(async () => {
-    try {
-      const txt = await navigator.clipboard.readText();
-      if (txt && txt !== lastClip && txt.length < 4000 && chatOpen && isOnline(chatOpen)) {
-        lastClip = txt;
-        sendTo(chatOpen, { t: 'clip-sync', text: txt });
-      }
-    } catch {}
-  }, 3000);
+  if (settings.clipSync) {
+    setInterval(async () => {
+      try {
+        if (!settings.clipSync) return;
+        const txt = await navigator.clipboard.readText();
+        if (txt && txt !== lastClip && txt.length < 4000 && chatOpen && isOnline(chatOpen)) {
+          lastClip = txt;
+          sendTo(chatOpen, { t: 'clip-sync', text: txt });
+        }
+      } catch {}
+    }, 3000);
+  }
 
   /* render call history on home */
   renderRecent();

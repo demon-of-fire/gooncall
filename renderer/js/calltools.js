@@ -331,7 +331,7 @@ let snipDragging = false;
 async function snipAndSend() {
   const target = chatOpen || (call && call.peerCode);
   if (!target) { toast('Open a chat or call first', 'err'); return; }
-  toast('Capturing your screen.');
+  toast('Capturing your screen…');
   try {
     const dataUrl = await window.aero.captureScreen();
     if (!dataUrl) { toast('Capture failed', 'err'); return; }
@@ -475,20 +475,6 @@ function bindSnipEditor() {
 function closeSnipEditor() {
   const d = document.getElementById('dlg-snipedit');
   try { d.close(); } catch (e) { d.removeAttribute('open'); }
-}
-
-async function snipAndSend() {
-  const target = chatOpen || (call && call.peerCode);
-  if (!target) { toast('Open a chat or call first', 'err'); return; }
-  toast('Capturing your screen…');
-  try {
-    const dataUrl = await window.aero.captureScreen();
-    if (!dataUrl) { toast('Capture failed', 'err'); return; }
-    const blob = await (await fetch(dataUrl)).blob();
-    const prevOpen = chatOpen;
-    if (chatOpen !== target) openChat(target);
-    await sendAttachment('image', blob, 'snip-' + Date.now() + '.png');
-  } catch { toast('Screenshot failed', 'err'); }
 }
 
 /* ============ sound pack export / import ============ */

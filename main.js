@@ -19,7 +19,7 @@ function migrateFromAerocall() {
   if (process.env.SMOKE_PEER || isPortable()) return;
   try {
     const appData = app.getPath('appData');
-    const legacy = path.join(appData, 'GoonCall');
+    const legacy = path.join(appData, 'AeroCall');
     const cur = path.join(appData, app.getName());
     if (!fs.existsSync(legacy) || fs.existsSync(cur)) return;
     fs.mkdirSync(cur, { recursive: true });
@@ -641,7 +641,10 @@ function startupUpdateCheck() {
 }
 
 ipcMain.handle('data:get', (_e, name) => readData(name, null));
-ipcMain.handle('data:set', (_e, name, value) => writeData(name, value));
+ipcMain.handle('data:set', (_e, name, value) => {
+  if (typeof name !== 'string' || !/^[a-zA-Z0-9_\-]+$/.test(name)) return false;
+  return writeData(name, value);
+});
 
 ipcMain.handle('screens:list', async () => {
   const sources = await desktopCapturer.getSources({
@@ -721,8 +724,9 @@ ipcMain.handle('files:pick', async () => {
 ipcMain.handle('files:read', (_e, p) => {
   try {
     const resolved = path.resolve(String(p));
-    // only hand out files the picker itself revealed
-    if (!resolved.startsWith(path.dirname(resolved))) return null;
+    const data = dataDir();
+    const sounds = soundsDir();
+    if (!resolved.startsWith(data) && !resolved.startsWith(sounds)) return null;
     return fs.readFileSync(resolved).buffer;
   } catch { return null; }
 });
@@ -1035,7 +1039,15 @@ function remotePage() {
 function startRemoteServer() {
   if (remoteServer || process.env.SMOKE_TEST || process.env.SMOKE_PEER) return;
   const http = require('http');
+  const rateMap = new Map();
   remoteServer = http.createServer((req, res) => {
+    const ip = req.socket.remoteAddress || '';
+    const now = Date.now();
+    const hits = rateMap.get(ip) || [];
+    const recent = hits.filter(t => now - t < 60000);
+    if (recent.length > 30) { res.writeHead(429); res.end('rate limited'); return; }
+    recent.push(now);
+    rateMap.set(ip, recent);
     const u = new URL(req.url, 'http://x');
     if (u.searchParams.get('pin') !== String(prefs.phonePin || '')) {
       res.writeHead(403); res.end('bad pin'); return;
