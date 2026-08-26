@@ -38,8 +38,38 @@ git push origin main --follow-tags
 # keep the local installer in the project root fresh too
 Write-Host "Building local installer..."
 npx electron-builder --win nsis --publish never
-Copy-Item "dist\gooncall setup.exe" "gooncall setup.exe" -Force
-Write-Host "Root copy refreshed: gooncall setup.exe"
+
+# electron-builder converts spaces to dashes in published filenames
+$builtExe = "dist\gooncall-setup.exe"
+$builtBlockmap = "dist\gooncall-setup.exe.blockmap"
+$builtYml = "dist\latest.yml"
+
+# fallback: check for space-named artifact too
+if (-not (Test-Path $builtExe)) {
+  $spaceExe = "dist\gooncall setup.exe"
+  if (Test-Path $spaceExe) {
+    Copy-Item $spaceExe $builtExe -Force
+    $spaceBlockmap = "dist\gooncall setup.exe.blockmap"
+    if (Test-Path $spaceBlockmap) { Copy-Item $spaceBlockmap $builtBlockmap -Force }
+  }
+}
+
+Copy-Item $builtExe "gooncall-setup.exe" -Force
+Write-Host "Root copy refreshed: gooncall-setup.exe"
+
+# publish release to GitHub with latest.yml so electron-updater can find it
+$tag = git describe --tags --abbrev=0 2>$null
+if ($tag) {
+  Write-Host "Publishing release $tag to GitHub..."
+  # remove old release if it exists (e.g. from a failed CI run)
+  gh release delete $tag --repo demon-of-fire/gooncall --yes --cleanup-tag 2>$null
+  # create release with all required files
+  $assets = @("gooncall-setup.exe")
+  if (Test-Path $builtBlockmap) { $assets += $builtBlockmap }
+  if (Test-Path $builtYml) { $assets += $builtYml }
+  gh release create $tag --repo demon-of-fire/gooncall --title $tag --notes "GoonCall $tag" @assets
+  Write-Host "Release $tag published with latest.yml"
+}
 
 Write-Host ""
 Write-Host "Done. Track CI: https://github.com/demon-of-fire/gooncall/actions"
