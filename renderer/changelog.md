@@ -1,5 +1,20 @@
 # GoonCall Changelog
 
+## v1.6.1 - Bugfix Release
+
+- **Fixed**: corrupted `downscaleAvatar` — GIF avatar saves were broken by spliced-in code
+- **Fixed**: ringtone preview crash — undeclared variable `i` threw ReferenceError on every change
+- **Fixed**: legacy migration was looking for wrong folder name (GoonCall vs AeroCall)
+- **Fixed**: duplicate `snipAndSend` definitions — snip editor workflow now works properly
+- **Fixed**: duplicate quick-switcher keydown handler — Ctrl+K now opens correctly
+- **Fixed**: nudge button guarded against missing element
+- **Security**: path traversal check in file read IPC now actually validates paths
+- **Security**: clipboard sync is now opt-in (default off) with a toggle in Settings > App
+- **Security**: IPC `data:set` validates names to prevent path traversal
+- **Security**: phone remote server now has rate limiting (30 req/min)
+- **Performance**: renderChatLog skips rebuild when chat isn't visible
+- **Performance**: outbox retry skips entirely when no messages are queued
+
 ## v1.6.0 - Discord-Quality Sounds, Nitro Features, Call Fixes
 
 - **Discord-quality ring tones**: incoming call ring is now a rich two-tone chime with harmonics (like Discord's actual ring)
