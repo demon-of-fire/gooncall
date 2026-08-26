@@ -42,9 +42,9 @@
       </nav>
 
       <footer id="user-panel">
-        <div id="up-avatar" title=""><span id="avatar">?</span><span id="up-dot" class="up-dot offline"></span></div>
+        <div id="up-avatar" title=""><span id="avatar" class="profile-ring">?</span><span id="up-dot" class="up-dot offline"></span></div>
         <div class="up-meta">
-          <div id="prof-name">You</div>
+          <div id="prof-name">You<span class="nitro-badge">NITRO</span></div>
           <div id="prof-code" class="code">#····</div>
         </div>
         <button id="btn-copy-code" class="icon-btn" aria-label="Copy your code" title="Copy your code">&#x1F4CB;</button>
@@ -176,7 +176,7 @@
   </div>
 
   <dialog id="dlg-incoming" aria-modal="true" aria-labelledby="inc-title">
-    <div id="inc-avatar" class="inc-avatar">?</div>
+    <div id="inc-avatar" class="inc-avatar profile-ring">?</div>
     <h2 id="inc-title">Incoming call</h2>
     <p id="inc-from"></p>
     <p class="inc-hint">Ctrl+Enter to accept &middot; Esc to decline</p>
@@ -222,6 +222,15 @@
         <label class="field"><span>Status (friends see this)</span>
           <input id="set-status" type="text" maxlength="80" placeholder="e.g. grinding ranked" aria-label="Your status" />
         </label>
+        <div class="status-presets" id="status-presets">
+          <button type="button" class="ghost-btn small-btn" data-status="">Clear</button>
+          <button type="button" class="ghost-btn small-btn" data-status="🎮 Gaming">🎮 Gaming</button>
+          <button type="button" class="ghost-btn small-btn" data-status="🎵 Vibing">🎵 Vibing</button>
+          <button type="button" class="ghost-btn small-btn" data-status="💻 Coding">💻 Coding</button>
+          <button type="button" class="ghost-btn small-btn" data-status="📺 Watching">📺 Watching</button>
+          <button type="button" class="ghost-btn small-btn" data-status="😴 Sleeping">😴 Sleeping</button>
+          <button type="button" class="ghost-btn small-btn" data-status="🔥 Gooning">🔥 Gooning</button>
+        </div>
         <div class="field"><span>Accent</span>
           <div id="accent-row" role="radiogroup" aria-label="Accent color"></div>
         </div>
@@ -244,6 +253,7 @@
           <label><input type="checkbox" id="set-echo" /> Echo cancel</label>
           <label><input type="checkbox" id="set-noise" /> Noise suppress</label>
           <label><input type="checkbox" id="set-agc" /> Auto gain</label>
+          <label><input type="checkbox" id="set-hdvoice" /> HD Voice (128kbps)</label>
           <button id="btn-mic-test" class="ghost-btn small-btn" type="button">Test mic &#x1F50A;</button>
         </div>
         <div class="meter-wrap"><div id="mic-meter"><i></i></div></div>
@@ -400,7 +410,7 @@
 
   <dialog id="dlg-profile" aria-modal="true" aria-labelledby="pf-name">
     <div class="pf-banner"></div>
-    <div id="pf-avatar" class="pf-avatar"></div>
+    <div id="pf-avatar" class="pf-avatar profile-ring"></div>
     <h2 id="pf-name" style="margin-top:8px"></h2>
     <div id="pf-statusline" class="status" style="text-align:center;margin:-6px 0 4px;"></div>
     <p id="pf-note" class="set-hint hidden"></p>

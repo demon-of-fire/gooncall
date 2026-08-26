@@ -51,6 +51,30 @@ const Sounds = {
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
     return this.ctx;
   },
+  vol() { return Math.max(0, Math.min(1, ((typeof settings !== 'undefined' ? settings.ringVol : 70) || 70) / 100)); },
+
+  /* play a rich note: fundamental + harmonics with ADSR envelope */
+  _note(freq, start, dur, gain, type) {
+    const ctx = this.ensure();
+    const t = ctx.currentTime + start;
+    const harmonics = type === 'bright' ? [1, 2, 3, 4] : [1, 2, 3];
+    const amps = type === 'bright' ? [1, 0.35, 0.12, 0.06] : [1, 0.3, 0.08];
+    for (let i = 0; i < harmonics.length; i++) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.frequency.value = freq * harmonics[i];
+      o.type = i === 0 ? 'sine' : 'sine';
+      const a = gain * amps[i];
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(a, t + 0.008);
+      g.gain.setValueAtTime(a, t + dur * 0.6);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(ctx.destination);
+      o.start(t); o.stop(t + dur + 0.01);
+    }
+  },
+
+  /* simple legacy blip for UI sounds */
   blip(freqs, dur = 0.14, gain = 0.07) {
     try {
       const ctx = this.ensure();
@@ -66,10 +90,33 @@ const Sounds = {
       }
     } catch {}
   },
-  pop() { this.blip([880], .06, .04); },
-  sent() { this.blip([660], .05, .03); },
-  connect() { this.blip([440, 660], .12); },
-  disconnect() { this.blip([520, 340], .13); },
+
+  /* Discord-style message notification: bright ascending ding */
+  pop() {
+    const v = this.vol();
+    this._note(880, 0, 0.08, 0.10 * v, 'bright');
+    this._note(1320, 0.06, 0.14, 0.08 * v, 'bright');
+  },
+  /* Discord-style message sent: quick descending confirmation */
+  sent() {
+    const v = this.vol();
+    this._note(1100, 0, 0.06, 0.07 * v);
+    this._note(880, 0.045, 0.08, 0.05 * v);
+  },
+  /* call connected: bright ascending two-note */
+  connect() {
+    const v = this.vol();
+    this._note(659, 0, 0.12, 0.10 * v, 'bright');
+    this._note(880, 0.09, 0.18, 0.12 * v, 'bright');
+    this._note(1175, 0.20, 0.25, 0.09 * v, 'bright');
+  },
+  /* call disconnected: descending thud */
+  disconnect() {
+    const v = this.vol();
+    this._note(523, 0, 0.10, 0.08 * v);
+    this._note(440, 0.08, 0.10, 0.07 * v);
+    this._note(330, 0.16, 0.18, 0.06 * v);
+  },
   mute() { this.blip([540, 370], .09, .06); },
   unmute() { this.blip([370, 540], .09, .05); },
   deafOn() { this.blip([240, 170], .11, .06); },
@@ -77,7 +124,8 @@ const Sounds = {
   shareOn() { this.blip([660, 990], .08, .05); },
   shareOff() { this.blip([520, 392], .1, .045); },
   fxTick() { this.blip([760], .05, .04); },
-  vol() { return Math.max(0, Math.min(1, ((typeof settings !== 'undefined' ? settings.ringVol : 70) || 70) / 100)); },
+
+  /* Discord-style incoming call ring: two-tone chime repeating */
   ringToneFor(code) {
     const f = friendByCode(code);
     return (f && f.ring) || settings.ring || 'classic';
@@ -89,7 +137,7 @@ const Sounds = {
       if (qhActive()) { this.ringIv = setInterval(() => {}, 2500); return; }
       const f = friendByCode(code);
       const fr = f && f.ring;
-      // custom ringtone from the soundboard folder
+      /* custom ringtone from the soundboard folder */
       if (fr && fr.startsWith('snd:')) {
         const name = fr.slice(4);
         const fire = () => playSoundFile(name, { localOnly: true });
@@ -97,21 +145,58 @@ const Sounds = {
         this.ringIv = setInterval(fire, 3400);
         return;
       }
-      const tone = RINGTONES[this.ringToneFor(code)] || RINGTONES.classic;
-      let step = 0;
-      const playStep = () => {
-        if (!tone.steps.length) return;
-        this.blip(tone.steps[step % tone.steps.length], tone.dur, .09 * v);
-        step++;
-      };
-      playStep();
-      this.ringIv = setInterval(playStep, tone.gap);
+      const toneId = this.ringToneFor(code);
+      /* classic = Discord-style incoming ring */
+      if (toneId === 'classic' || !RINGTONES[toneId]) {
+        /* Discord ring: two-tone chime pattern (A5→E6) repeating */
+        const ringPattern = () => {
+          this._note(880, 0, 0.14, 0.11 * v, 'bright');
+          this._note(1318, 0.12, 0.18, 0.13 * v, 'bright');
+          this._note(880, 0.55, 0.12, 0.10 * v, 'bright');
+          this._note(1175, 0.65, 0.16, 0.11 * v, 'bright');
+        };
+        ringPattern();
+        this.ringIv = setInterval(ringPattern, 2000);
+      } else if (toneId === 'off') {
+        /* silent — do nothing */
+      } else {
+        const tone = RINGTONES[toneId];
+        let step = 0;
+        const playStep = () => {
+          if (!tone.steps.length) return;
+          this.blip(tone.steps[step % tone.steps.length], tone.dur, .09 * v);
+          step++;
+        };
+        playStep();
+        this.ringIv = setInterval(playStep, tone.gap);
+      }
     } else {
-      const pattern = () => this.blip([440, 480], .45, .045 * v);
-      pattern();
-      this.ringIv = setInterval(pattern, 3200);
+      /* outgoing ring: pulsing two-note like Discord's calling sound */
+      let p = 0;
+      const outPattern = () => {
+        const freqs = p % 2 === 0 ? [523, 659] : [587, 740];
+        this.blip(freqs, 0.35, 0.05 * v);
+        p++;
+      };
+      outPattern();
+      this.ringIv = setInterval(outPattern, 2200);
     }
   },
+
+  /* notification ping: user joins / message when not in chat */
+  notify() {
+    const v = this.vol();
+    this._note(1047, 0, 0.06, 0.09 * v, 'bright');
+    this._note(1318, 0.05, 0.10, 0.07 * v, 'bright');
+    this._note(1568, 0.11, 0.15, 0.06 * v, 'bright');
+  },
+  /* call missed / error buzz */
+  error() {
+    const v = this.vol();
+    this.blip([330, 311], 0.12, 0.08 * v);
+    setTimeout(() => this.blip([330, 311], 0.15, 0.06 * v), 180);
+  },
+
   stopRing() { if (this.ringIv) { clearInterval(this.ringIv); this.ringIv = null; } }
 };
 
@@ -136,7 +221,7 @@ let settings = {
   status: '', ring: 'classic', gate: 0,
   sharePreset: 'balanced', accent: 'violet', amoled: false, theme: '',
   qh: false, qhStart: '23:00', qhEnd: '08:00',
-  boardVol: 80, boardMonitor: true, fx: 'none',
+  boardVol: 80, boardMonitor: true, fx: 'none', hdVoice: false,
   pins: {}
 };
 let pendingIn = [];     // [{code,name}] incoming friend requests
@@ -153,10 +238,11 @@ const ACCENTS = {
 };
 
 const RINGTONES = {
-  classic: { label: 'Classic', steps: [[659, 784], [659, 784], [587, 659]], dur: .16, gap: 2300 },
+  classic: { label: 'Discord', steps: [], dur: 0, gap: 2000 },
   future: { label: 'Futuristic', steps: [[523, 1046], [659, 1318], [784, 1568]], dur: .11, gap: 1600 },
   marimba: { label: 'Marimba', steps: [[784], [988], [1175], [988]], dur: .13, gap: 1900 },
   chirp: { label: 'Chirp', steps: [[1245], [1568], [1245]], dur: .07, gap: 1600 },
+  echo: { label: 'Echo', steps: [[880], [0], [880], [1175]], dur: .15, gap: 800 },
   off: { label: 'Silent', steps: [], dur: .1, gap: 2500 }
 };
 
@@ -295,8 +381,11 @@ function initPeer() {
     }
     if (type === 'unavailable-id') {
       try { peer.destroy(); } catch {}
+      const oldCode = identity.code;
       identity.code = genCode();
       saveIdentity(); renderProfile();
+      toast('Your code was taken — new code generated. Tell your friend to re-add you: ' + identity.code, 'err');
+      Sounds.error();
       setTimeout(initPeer, 300);
       return;
     }
@@ -533,13 +622,13 @@ function sweepPresence() {
     const c = conns.get(f.code);
     if (!c || !c.open) {
       const fails = connFailCount.get(f.code) || 0;
-      const backoff = Math.min(300000, 5000 * Math.pow(2, fails));
+      const backoff = Math.min(120000, 3000 * Math.pow(1.5, fails));
       const last = lastConnAttempt.get(f.code) || 0;
       if (now - last < backoff) continue;
       lastConnAttempt.set(f.code, now);
       ensureConn(f.code)
-        .then(() => connFailCount.set(f.code, 0))
-        .catch(() => connFailCount.set(f.code, fails + 1));
+        .then(() => { connFailCount.set(f.code, 0); presence.set(f.code, true); updateAllFriendRows(); })
+        .catch(() => { connFailCount.set(f.code, fails + 1); presence.set(f.code, false); updateAllFriendRows(); });
     }
   }
 }
@@ -563,6 +652,7 @@ async function onData(conn, raw) {
           pendingIn.push({ code, name: String(m.name || '').slice(0, 32) || ('Guest-' + code.slice(0, 4)) });
           savePendingIn(); renderRequests(); renderFriends();
           toast('Friend request from ' + (peerState[code] && pendingIn[pendingIn.length - 1].name));
+          Sounds.notify();
         }
       } else {
         if (m.hue != null && f.hue !== Number(m.hue)) { f.hue = ((Number(m.hue) % 360) + 360) % 360; saveFriends(); }
@@ -570,6 +660,7 @@ async function onData(conn, raw) {
           delete f.pending;
           saveFriends();
           toast(displayName(code) + ' added you back!', 'ok');
+          Sounds.connect();
         }
         upsertFriend(code, m.name);
       }
@@ -613,13 +704,14 @@ async function onData(conn, raw) {
       const id = m.id ? String(m.id).slice(0, 64) : null;
       await pushChat(code, { me: false, text, ts: Number(m.ts) || Date.now(), id, replyTo: m.replyTo, sticker: !!m.sticker, meAction: !!m.meAction });
       safeSend(conn, { t: 'ack', id });
-      Sounds.pop();
       const chatVisible = chatOpen === code && $('view-chat').classList.contains('active') && winFocused;
       if (chatVisible) {
         safeSend(conn, { t: 'seen', ids: id ? [id] : [] });
+        Sounds.pop();
       } else {
         setUnread(code, (unread[code] || 0) + 1);
         scheduleRender();
+        Sounds.notify();
         if (canNotify()) {
           window.aero.notify(displayName(code), text.slice(0, 120), code);
           window.aero.flash(true);
@@ -795,6 +887,7 @@ async function onData(conn, raw) {
     case 'call-cancel': {
       if (call && call.peerCode === code && (call.state === 'incoming' || call.accepting)) {
         toast('Missed call from ' + displayName(code), '', true);
+        Sounds.error();
         if (!qhActive()) window.aero.notify(displayName(code), 'Missed GoonCall', code);
         teardownCall({ back: false, result: 'missed' });
       }
@@ -1295,7 +1388,7 @@ function appendMsgContent(main, code, it, d, showMeta) {
     author.style.color = it.me
       ? 'hsl(' + myHue() + ',70%,72%)'
       : 'hsl(' + hueFor(code) + ',70%,72%)';
-    author.textContent = it.me ? identity.name : displayName(code);
+    author.innerHTML = escapeHtml(it.me ? identity.name : displayName(code)) + '<span class="nitro-badge">NITRO</span>';
     const tm = document.createElement('span');
     tm.className = 'msg-time';
     tm.title = d.toLocaleString();
@@ -1397,13 +1490,22 @@ function appendMsgContent(main, code, it, d, showMeta) {
     }
   } else {
     const txt = it.text || '';
-    const q = searchQuery.trim().toLowerCase();
-    let html = renderMarkdown(txt);
-    if (q && txt.toLowerCase().includes(q)) {
-      const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-      html = html.replace(re, '<mark class="search-hl">$1</mark>');
+    /* big emoji: if message is 1-3 emoji characters, render huge like Nitro */
+    const emojiOnly = /^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F\u20E3\s]+$/u.test(txt) && txt.trim().length <= 8 && txt.trim().length > 0;
+    if (emojiOnly) {
+      const big = document.createElement('div');
+      big.className = 'big-emoji';
+      big.textContent = txt.trim();
+      body.appendChild(big);
+    } else {
+      const q = searchQuery.trim().toLowerCase();
+      let html = renderMarkdown(txt);
+      if (q && txt.toLowerCase().includes(q)) {
+        const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        html = html.replace(re, '<mark class="search-hl">$1</mark>');
+      }
+      body.insertAdjacentHTML('beforeend', html + tickHtml(it));
     }
-    body.insertAdjacentHTML('beforeend', html + tickHtml(it));
     if (it.xfer && it.xfer.pct < 100 && it.me) {
       const bar = document.createElement('div');
       bar.className = 'xbar';
@@ -2347,14 +2449,16 @@ function onCallAccepted() {
   }, 150);
 }
 
-/* raise Opus from the ~24kbps default to 66kbps + forward error correction */
+/* raise Opus from the ~24kbps default to 66kbps or 128kbps (HD) + forward error correction */
 function enhanceOpusSdp(sdp) {
   try {
     if (!sdp || sdp.indexOf('opus/48000') === -1) return sdp;
     const m = /a=rtpmap:(\d+) opus\/48000\/2/.exec(sdp);
     if (!m) return sdp;
     const pt = m[1];
-    const params = 'maxaveragebitrate=66000;useinbandfec=1;usedtx=0';
+    const hd = settings && settings.hdVoice;
+    const bitrate = hd ? 128000 : 66000;
+    const params = 'maxaveragebitrate=' + bitrate + ';useinbandfec=1;usedtx=0';
     const fmtpRe = new RegExp('a=fmtp:' + pt + ' ([^\\r\\n]*)');
     if (fmtpRe.test(sdp)) {
       return sdp.replace(fmtpRe, (line, existing) =>
@@ -2972,6 +3076,7 @@ function openSettings() {
   $('set-echo').checked = settings.echo;
   $('set-noise').checked = settings.noise;
   $('set-agc').checked = settings.agc;
+  $('set-hdvoice').checked = !!settings.hdVoice;
   $('set-notifs').checked = settings.notifyMsgs !== false;
   $('set-callvol').value = settings.callVol;
   $('callvol-val').textContent = settings.callVol;
@@ -2997,6 +3102,10 @@ function openSettings() {
   $('set-qh-end').value = settings.qhEnd || '08:00';
   buildAccentRow();
   buildThemeRow();
+  /* status presets */
+  document.querySelectorAll('#status-presets [data-status]').forEach(btn => {
+    btn.onclick = () => { $('set-status').value = btn.dataset.status; };
+  });
   scCapturing = null;
   renderShortcuts();
   applyAvatar($('set-av-preview'), identity.avatar, identity.hue, initials(identity.name));
@@ -3151,6 +3260,7 @@ function saveSettings() {
   settings.echo = $('set-echo').checked;
   settings.noise = $('set-noise').checked;
   settings.agc = $('set-agc').checked;
+  settings.hdVoice = $('set-hdvoice').checked;
   settings.notifyMsgs = $('set-notifs').checked;
   settings.ptt = $('set-ptt').checked;
   settings.callVol = Number($('set-callvol').value) || 100;
@@ -3617,7 +3727,7 @@ function showProfile(code) {
   const hue = me ? myHue() : ((f && f.hue != null) ? f.hue : 220);
   const img = me ? identity.avatar : (f && f.av);
   applyAvatar($('pf-avatar'), img, hue, initials(name));
-  $('pf-name').textContent = name;
+  $('pf-name').innerHTML = escapeHtml(name) + '<span class="nitro-badge">NITRO</span>';
   const banner = document.querySelector('.pf-banner');
   if (banner) banner.style.background = 'linear-gradient(135deg,hsl(' + hue + ',55%,28%),hsl(' + ((hue + 60) % 360) + ',50%,18%),hsl(' + ((hue + 120) % 360) + ',45%,12%))';
   const on = me ? peerOnline : isOnline(code);

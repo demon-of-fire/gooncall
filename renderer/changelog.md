@@ -1,5 +1,19 @@
 # GoonCall Changelog
 
+## v1.6.0 - Discord-Quality Sounds, Nitro Features, Call Fixes
+
+- **Discord-quality ring tones**: incoming call ring is now a rich two-tone chime with harmonics (like Discord's actual ring)
+- **HD Voice toggle**: optional 128kbps Opus codec for crystal-clear voice (Settings > Audio)
+- **Big emoji**: single-emoji messages render at 64px like Discord Nitro
+- **Nitro badge**: animated profile ring + NITRO badge on every message and profile
+- **Profile effects**: animated spinning gradient border on avatars (Nitro-style)
+- **Status presets**: one-click status buttons (Gaming, Vibing, Coding, Watching, Sleeping, Gooning)
+- **Better notifications**: distinct sounds for friend requests, missed calls, messages, call connect/disconnect
+- **Faster reconnection**: initial presence sweep starts at 3s (was 5s) with gentler backoff
+- **Call fix**: "ID taken" now shows your new code in a toast so you can tell your friend
+- **Missed call sound**: proper error tone on missed calls instead of silence
+- **Call connect/disconnect**: richer multi-tone sounds
+
 ## v1.5.8 - Markdown, Slash Commands, Themes, Stickers
 
 - **Markdown rendering** in chat: bold, italic, strikethrough, code blocks, spoilers, blockquotes, headers, lists

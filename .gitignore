@@ -5,4 +5,8 @@ smoke.log
 .DS_Store
 
 goocall setup.exe
+gooncall-setup.exe
+gooncall setup.exe
 *.exe
+*.blockmap
+latest.yml
